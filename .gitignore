@@ -1,0 +1,27 @@
+# Dependencies
+app/node_modules/
+
+# Build output
+app/dist/
+
+# Environment variables (contains API keys!)
+app/.env
+app/.env.local
+app/.env.*.local
+
+# SSL certificates
+app/localhost+1*.pem
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
