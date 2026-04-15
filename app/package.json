@@ -4,12 +4,13 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "python3 ../server.py & vite",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.103.0",
     "lucide-react": "^1.6.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"

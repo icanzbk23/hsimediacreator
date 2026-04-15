@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
 import {
   Camera, Calendar, Mail, Copy, Sparkles, Plus, Trash2, ChartColumn,
   Check, AlertTriangle, Pencil, X, Search, Phone, Lock, FileText,
@@ -30,18 +31,30 @@ const INITIAL_VENUES = [
   { id:1,  name:"Mikado Restaurant",   concept:"", stock:7,  color:"#E8503A", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
   { id:2,  name:"Harvey Burger",       concept:"", stock:3,  color:"#7B68EE", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
   { id:3,  name:"Sinan Özdemir", concept:"", stock:11, color:"#34C759", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
-  { id:4,  name:"Batura Cafe",         concept:"", stock:2,  color:"#F4A623", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
   { id:5,  name:"Sultan Sofrası",      concept:"Hatay yöresel yemekler", stock:5, color:"#C0392B", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
   { id:6,  name:"Ege Döner",           concept:"", stock:8,  color:"#48BFAB", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
   { id:7,  name:"Kuban Kuruyemiş",     concept:"", stock:1,  color:"#E8A0BF", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
-  { id:8,  name:"Şenöz Fırın",         concept:"", stock:6,  color:"#D4871E", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
-  { id:9,  name:"Antochia Döner",      concept:"", stock:4,  color:"#9B7FBA", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
+  { id:8,  name:"Şenöz",                concept:"", stock:6,  color:"#D4871E", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
+  { id:9,  name:"YSANTOCHİA",      concept:"", stock:4,  color:"#9B7FBA", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
   { id:10, name:"Sütlü Kavurma",       concept:"", stock:9,  color:"#2C3E6B", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
   { id:11, name:"Süleyman Usta Döner", concept:"", stock:2,  color:"#8B4513", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
   { id:12, name:"İSTE Çiftlik",        concept:"Hatay yöresel ürünler", stock:10, color:"#5C7A4E", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
   { id:13, name:"Sezai Usta",          concept:"Kebap mangal", stock:3, color:"#E67E22", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
   { id:14, name:"Musta Döner",         concept:"", stock:6,  color:"#4A7C8E", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
+  { id:15, name:"Saudade",             concept:"", stock:0,  color:"#8B1A2F", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
 ];
+
+// ── SUPABASE SHARED STATE ──────────────────────────────────────────────────────
+// app_state tablosu: key/value çiftleri olarak tüm paylaşılan state'i tutar.
+// Admin localhost'tan, Ekip/Patron Vercel'den bağlanır; Supabase ortak veri katmanıdır.
+const _SURL = import.meta.env.VITE_SUPABASE_URL;
+const _SKEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const _supa = (_SURL && _SKEY) ? createClient(_SURL, _SKEY) : null;
+
+const _supaSet = async (key, value) => {
+  if (!_supa) return;
+  try { await _supa.from("app_state").upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" }); } catch {}
+};
 
 function getWeekDates() {
   const today = new Date();
@@ -745,7 +758,16 @@ function SurveyPage({ venueName }) {
 export default function App(){
   const [role,setRole]                   = useState(null);
   const ls = (key,def)=>{ try{ const v=localStorage.getItem(key); return v?JSON.parse(v):def; }catch{ return def; } };
-  const [venues,setVenuesRaw]            = useState(()=>ls("hsi_venues",INITIAL_VENUES));
+  const [venues,setVenuesRaw]            = useState(()=>{
+    const saved=ls("hsi_venues",null);
+    if(!saved) return INITIAL_VENUES;
+    // Kasıtlı silinen mekan ID'lerini oku
+    const deletedIds=new Set(ls("hsi_deleted_ids",[]));
+    // Sadece daha önce hiç görülmemiş (silinmemiş) yeni mekanları ekle
+    const savedIds=new Set(saved.map(v=>v.id));
+    const yeni=INITIAL_VENUES.filter(v=>!savedIds.has(v.id)&&!deletedIds.has(v.id));
+    return yeni.length?[...saved,...yeni]:saved;
+  });
   const [activeTab,setActiveTab]         = useState("onay");
   const [selectedVenue,setSelectedVenue] = useState(null);
   const [addModal,setAddModal]           = useState(false);
@@ -756,9 +778,73 @@ export default function App(){
   const [toast,setToast]                 = useState(null);
   const [mudurNotu,setMudurNotuRaw]      = useState(()=>ls("hsi_mudurNotu",""));
 
-  const setVenues    = v=>{ setVenuesRaw(v);    try{ localStorage.setItem("hsi_venues",   JSON.stringify(typeof v==="function"?v(venues):v)); }catch{} };
-  const setSchedule  = v=>{ setScheduleRaw(v);  try{ localStorage.setItem("hsi_schedule", JSON.stringify(typeof v==="function"?v(schedule):v)); }catch{} };
-  const setMudurNotu = v=>{ setMudurNotuRaw(v); try{ localStorage.setItem("hsi_mudurNotu",JSON.stringify(v)); }catch{} };
+  const setVenues    = v=>setVenuesRaw(v);
+  const setSchedule  = v=>setScheduleRaw(v);
+  const setMudurNotu = v=>setMudurNotuRaw(v);
+
+  // Supabase sync kontrol ref'leri
+  const supaReadyRef  = useRef(false);   // ilk yükleme bitti mi
+  const lastWriteRef  = useRef({});      // kendi yazdığımız değerleri takip et (realtime'da geri gelmesin)
+
+  // ── OTOMATİK KAYIT (localStorage + Supabase) ─────────────────────────────────
+  useEffect(()=>{
+    try{ localStorage.setItem("hsi_venues", JSON.stringify(venues)); }catch{}
+    if(!supaReadyRef.current) return;
+    lastWriteRef.current.venues=JSON.stringify(venues);
+    _supaSet("venues", venues);
+  },[venues]);
+  useEffect(()=>{
+    try{ localStorage.setItem("hsi_schedule", JSON.stringify(schedule)); }catch{}
+    if(!supaReadyRef.current) return;
+    lastWriteRef.current.schedule=JSON.stringify(schedule);
+    _supaSet("schedule", schedule);
+  },[schedule]);
+  useEffect(()=>{
+    try{ localStorage.setItem("hsi_mudurNotu", JSON.stringify(mudurNotu)); }catch{}
+    if(!supaReadyRef.current) return;
+    lastWriteRef.current.mudur_notu=JSON.stringify(mudurNotu);
+    _supaSet("mudur_notu", mudurNotu);
+  },[mudurNotu]);
+
+  // ── SUPABASE'DEN İLK YÜKLEME ─────────────────────────────────────────────────
+  useEffect(()=>{
+    if(!_supa){ supaReadyRef.current=true; return; }
+    (async()=>{
+      try{
+        const {data} = await _supa.from("app_state").select("key,value");
+        if(data?.length){
+          const m=Object.fromEntries(data.map(r=>[r.key,r.value]));
+          if(m.venues?.length){
+            const localDel = new Set(ls("hsi_deleted_ids",[]));
+            const supaDel  = new Set(m.deleted_venue_ids||[]);
+            const allDel   = new Set([...localDel,...supaDel]);
+            const supaIds  = new Set(m.venues.map(v=>v.id));
+            const toAdd    = INITIAL_VENUES.filter(v=>!supaIds.has(v.id)&&!allDel.has(v.id));
+            setVenuesRaw(toAdd.length?[...m.venues,...toAdd]:m.venues);
+          }
+          if(m.schedule)          setScheduleRaw(m.schedule);
+          if(m.mudur_notu!=null)  setMudurNotuRaw(m.mudur_notu);
+        }
+      }catch(e){ console.error("Supabase yüklenemedi:",e); }
+      supaReadyRef.current=true;
+    })();
+  },[]);
+
+  // ── SUPABASE REALTIME (diğer cihazlardan gelen değişiklikler) ─────────────────
+  useEffect(()=>{
+    if(!_supa) return;
+    const ch=_supa.channel("app_state_rt")
+      .on("postgres_changes",{event:"*",schema:"public",table:"app_state"},(payload)=>{
+        const {key,value}=payload.new||{};
+        if(!key||!value) return;
+        if(lastWriteRef.current[key]===JSON.stringify(value)) return; // kendi yazdığımız, yoksay
+        if(key==="venues")     setVenuesRaw(value);
+        if(key==="schedule")   setScheduleRaw(value);
+        if(key==="mudur_notu") setMudurNotuRaw(value);
+      })
+      .subscribe();
+    return ()=>{ _supa.removeChannel(ch); };
+  },[]);
   const weekDates = getWeekDates();
 
   const showToast=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),3500);};
@@ -807,7 +893,9 @@ export default function App(){
 
   const updateSlotStatus=(day,venueId,status)=>setSchedule(prev=>({...prev,[day]:prev[day].map(s=>s.venueId===venueId?{...s,status}:s)}));
   const updateSlotField =(day,venueId,field,val)=>setSchedule(prev=>({...prev,[day]:prev[day].map(s=>s.venueId===venueId?{...s,[field]:val}:s)}));
-  const swapVenueInSlot =(day,venueId,newId)=>setSchedule(prev=>({...prev,[day]:prev[day].map(s=>s.venueId===venueId?{...s,venueId:parseInt(newId),status:"taslak",note:"",ekipNotu:""}:s)}));
+  const swapVenueInSlot =(day,venueId,newId)=>setSchedule(prev=>({...prev,[day]:newId===""?prev[day].filter(s=>s.venueId!==venueId):prev[day].map(s=>s.venueId===venueId?{...s,venueId:parseInt(newId),status:"taslak",note:"",ekipNotu:""}:s)}));
+  const addVenueToDay  =(day,venueId)=>{const id=parseInt(venueId);if(!id)return;setSchedule(prev=>{const exist=(prev[day]||[]).some(s=>s.venueId===id);if(exist)return prev;return{...prev,[day]:[...(prev[day]||[]),{venueId:id,status:"taslak",ideas:[],ekipFikirleri:[],note:"",ekipNotu:"",secilenIcerikler:[],icerikGonderildi:false,gonderilenIcerik:"",icerikOnaylandi:false}]};});};
+  const removeVenueFromDay=(day,venueId)=>setSchedule(prev=>({...prev,[day]:(prev[day]||[]).filter(s=>s.venueId!==venueId)}));
 
   const allSlots    = Object.values(schedule).flat();
   const confirmed   = allSlots.filter(s=>s.status==="kesinlesti").length;
@@ -1218,6 +1306,8 @@ export default function App(){
     const [ekipFikirForm,setEkipFikirForm]=useState(null); // key = "day_venueId"
     const [ekipFikirBaslik,setEkipFikirBaslik]=useState("");
     const [ekipFikirKonsept,setEkipFikirKonsept]=useState("");
+    const [addPickerDay,setAddPickerDay]=useState(null);
+    const [addPickerVal,setAddPickerVal]=useState("");
 
     const addEkipFikir=(day,venueId)=>{
       if(!ekipFikirBaslik.trim()) return;
@@ -1307,7 +1397,7 @@ export default function App(){
                   return (
                     <div key={slot.venueId} style={{background:"#0A0A14",border:`1px solid ${v.color}33`,borderRadius:10,padding:10,marginBottom:8,borderTop:`2px solid ${v.color}`}}>
                       {role==="admin"
-                        ?<select value={slot.venueId} onChange={e=>swapVenueInSlot(day,slot.venueId,e.target.value)} style={{background:"#0E0E1C",border:"none",color:"#fff",fontSize:12,fontWeight:700,width:"100%",marginBottom:6,cursor:"pointer",outline:"none"}}>{venues.map(vv=><option key={vv.id} value={vv.id}>{vv.name}</option>)}</select>
+                        ?<select value={slot.venueId} onChange={e=>swapVenueInSlot(day,slot.venueId,e.target.value)} style={{background:"#0E0E1C",border:"none",color:"#fff",fontSize:12,fontWeight:700,width:"100%",marginBottom:6,cursor:"pointer",outline:"none"}}><option value="">— Hiçbiri —</option>{venues.map(vv=><option key={vv.id} value={vv.id}>{vv.name}</option>)}</select>
                         :<div style={{fontSize:12,fontWeight:700,color:"#fff",marginBottom:6}}>{v.name}</div>}
                       <StockBadge stock={v.stock}/>
                       <div style={{marginTop:6,marginBottom:6}}><StatusBadge status={slot.status}/></div>
@@ -1443,6 +1533,18 @@ export default function App(){
                     </div>
                   );
                 })}
+                {role==="admin"&&(
+                  addPickerDay===day
+                    ?<div style={{marginTop:6,display:"flex",gap:4}}>
+                        <select value={addPickerVal} onChange={e=>setAddPickerVal(e.target.value)} style={{background:"#0A0A14",border:"1px solid #2A2A3E",borderRadius:6,color:"#fff",fontSize:11,flex:1,padding:"4px 6px",outline:"none"}}>
+                          <option value="">Mekan seç...</option>
+                          {venues.filter(v=>!(schedule[day]||[]).some(s=>s.venueId===v.id)).map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
+                        </select>
+                        <button onClick={()=>{if(addPickerVal){addVenueToDay(day,addPickerVal);setAddPickerDay(null);setAddPickerVal("");}}} style={{...s.btn("success"),padding:"4px 8px",fontSize:11}}>✓</button>
+                        <button onClick={()=>{setAddPickerDay(null);setAddPickerVal("");}} style={{...s.btn("ghost"),padding:"4px 8px",fontSize:11}}>✕</button>
+                      </div>
+                    :<button onClick={()=>{setAddPickerDay(day);setAddPickerVal("");}} style={{width:"100%",marginTop:slots.length?6:0,background:"none",border:"1px dashed #2A2A3E",borderRadius:8,color:"#555",fontSize:11,padding:"5px",cursor:"pointer",transition:"all 0.2s"}} onMouseEnter={e=>e.target.style.borderColor="#7B68EE"} onMouseLeave={e=>e.target.style.borderColor="#2A2A3E"}>+ Mekan Ekle</button>
+                )}
               </div>
             );
           })}
@@ -1736,8 +1838,142 @@ export default function App(){
           </div>
         ))}
       </div>
+
+      {/* ── STOK ÖZETİ ── */}
+      {(()=>{
+        const sorted=[...venues].sort((a,b)=>a.stock-b.stock);
+        const stokIcon=s=>s===0?"⚫":s<=2?"🔴":s<=6?"🟡":"🟢";
+        const stokMsg="📦 Stok Özeti\n\n"+sorted.map(v=>`${stokIcon(v.stock)} ${v.name}: ${v.stock}`).join("\n")+"\n\nToplam: "+venues.reduce((a,v)=>a+v.stock,0)+" stok";
+        return(
+          <div style={{marginTop:20,background:"#0E0E1C",border:"1px solid #1A1A2E",borderRadius:14,padding:20}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+              <div style={{width:34,height:34,borderRadius:10,background:"#FF950022",display:"flex",alignItems:"center",justifyContent:"center",color:"#FF9500"}}><Icon name="stock" size={17}/></div>
+              <div><div style={{fontWeight:700,fontSize:14}}>Stok Özeti</div><div style={{fontSize:11,color:"#555"}}>Mekan bazlı stok durumu</div></div>
+            </div>
+            <div style={{background:"#0A0A14",border:"1px solid #1A1A2E",borderRadius:10,padding:14,fontFamily:"monospace",fontSize:12,color:"#9BE4A0",lineHeight:1.8,whiteSpace:"pre-wrap",maxHeight:280,overflow:"auto",marginBottom:12}}>{stokMsg}</div>
+            <button onClick={()=>{navigator.clipboard.writeText(stokMsg);setCopied("stok");setTimeout(()=>setCopied(null),2000);showToast("Kopyalandı!");}} style={s.btn()}>
+              {copied==="stok"?<><Icon name="check" size={14}/> Kopyalandı!</>:<><Icon name="copy" size={14}/> Kopyala</>}
+            </button>
+          </div>
+        );
+      })()}
     </div>
   );
+
+  // ── İÇERİK KONTROL PANELİ ────────────────────────────────────────────────────
+  const IcerikKontrolPanel = () => {
+    const [tarama, setTarama]   = useState(null);
+    const [scanning, setScanning] = useState(false);
+    const [hata, setHata]       = useState(null);
+
+    const harddisTara = async () => {
+      setScanning(true); setHata(null);
+      try {
+        const r = await fetch("/api/icerik-tara");
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.error || "Tarama başarısız");
+        setTarama(d);
+      } catch(e) { setHata(e.message); }
+      finally { setScanning(false); }
+    };
+
+    const venueRenk = (adi) => (venues.find(v => v.name === adi) || {}).color || "#7B68EE";
+
+    const renderFolders = (items) => items.length === 0
+      ? <div style={{fontSize:12,color:"#333",padding:"3px 0"}}>—</div>
+      : items.map((it, i) => (
+          <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 8px",borderRadius:6,background:it.renkli?"#34C75910":"#0E0E1C",border:`1px solid ${it.renkli?"#34C75922":"#1A1A2E"}`,marginBottom:3}}>
+            <span style={{fontSize:13,flexShrink:0}}>{it.renkli ? "✅" : "📦"}</span>
+            <span style={{flex:1,fontSize:12,color:it.renkli?"#9BE4A0":"#A0A0B8",lineHeight:1.3,wordBreak:"break-word"}}>{it.ad}</span>
+            <span style={{fontSize:10,fontWeight:700,color:it.renkli?"#34C759":"#FF9500",flexShrink:0}}>{it.renkli?"YAPILDI":"STOK"}</span>
+          </div>
+        ));
+
+    const renderSection = (title, items, color) => (
+      <div style={{marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
+          <span style={{fontSize:11,fontWeight:700,color,textTransform:"uppercase",letterSpacing:"0.08em"}}>{title}</span>
+          <span style={{fontSize:11,color:"#444"}}>{items.filter(x=>x.renkli).length}/{items.length} yapıldı</span>
+        </div>
+        {renderFolders(items)}
+      </div>
+    );
+
+    return (
+      <div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:22,flexWrap:"wrap",gap:12}}>
+          <div>
+            <div style={{fontSize:24,fontWeight:800,color:"#fff",marginBottom:4}}>İçerik Kontrol</div>
+            <div style={{fontSize:13,color:"#555"}}>Harddiskteki video klasörlerini yapım / akım olarak sınıflandırır</div>
+          </div>
+          <button onClick={harddisTara} disabled={scanning} style={{...s.btn("primary"),padding:"10px 20px",gap:8}}>
+            {scanning
+              ? <><span style={{display:"inline-block",width:13,height:13,border:"2px solid #fff4",borderTopColor:"#fff",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/> Taranıyor...</>
+              : <><Icon name="refresh" size={15}/> Harddiski Tara</>}
+          </button>
+        </div>
+
+        {hata && (
+          <div style={{background:"#FF3B3018",border:"1px solid #FF3B3033",borderRadius:10,padding:"10px 14px",fontSize:13,color:"#FF3B30",marginBottom:16}}>
+            ⚠️ {hata}
+          </div>
+        )}
+
+        {!tarama && !scanning && (
+          <div style={{textAlign:"center",padding:"70px 20px"}}>
+            <div style={{fontSize:52,marginBottom:16}}>💾</div>
+            <div style={{fontSize:15,fontWeight:600,color:"#555",marginBottom:8}}>Elements diski takılıyken "Harddiski Tara" butonuna bas</div>
+            <div style={{fontSize:12,color:"#333"}}>Her mekanın video klasörleri yapım / akım olarak ayrıştırılıp gösterilecek</div>
+          </div>
+        )}
+
+        {tarama && !tarama.disk_var && (
+          <div style={{background:"#FF950018",border:"1px solid #FF950033",borderRadius:10,padding:14,fontSize:13,color:"#FF9500"}}>
+            ⚠️ Elements diski bulunamadı — <code>/Volumes/Elements</code> bağlı değil
+          </div>
+        )}
+
+        {tarama?.disk_var && tarama.mekanlar.length === 0 && (
+          <div style={{background:"#1A1A2E",border:"1px solid #252540",borderRadius:10,padding:14,fontSize:13,color:"#555"}}>
+            Disk tarandı ama eşleşen mekan klasörü bulunamadı.
+          </div>
+        )}
+
+        {tarama?.disk_var && tarama.mekanlar.length > 0 && (
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(360px,1fr))",gap:16}}>
+            {tarama.mekanlar.map((m, i) => {
+              const renk = venueRenk(m.supabase_adi);
+              const toplamYapim = m.yapim.filter(x=>x.renkli).length;
+              const toplamAkim  = m.akim.filter(x=>x.renkli).length;
+              return (
+                <div key={i} style={{background:"#0A0A14",border:`1px solid ${renk}22`,borderRadius:14,padding:18,borderTop:`3px solid ${renk}`}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+                    <div style={{width:10,height:10,borderRadius:"50%",background:renk,flexShrink:0}}/>
+                    <div style={{fontSize:15,fontWeight:700,color:"#E8E8F0",flex:1}}>{m.supabase_adi}</div>
+                    <span style={{fontSize:10,color:"#333",fontFamily:"monospace"}}>{m.disk_klasoru}</span>
+                  </div>
+                  <div style={{display:"flex",gap:8,marginBottom:14}}>
+                    {[
+                      {label:"Yapım",count:toplamYapim,total:m.yapim.length,color:"#34C759"},
+                      {label:"Akım", count:toplamAkim, total:m.akim.length, color:"#7B68EE"},
+                    ].map(({label,count,total,color})=>(
+                      <div key={label} style={{flex:1,background:color+"10",border:`1px solid ${color}22`,borderRadius:8,padding:"8px 10px",textAlign:"center"}}>
+                        <div style={{fontSize:20,fontWeight:800,color}}>{count}<span style={{fontSize:13,color:"#555"}}>/{total}</span></div>
+                        <div style={{fontSize:10,color:"#555",marginTop:2}}>{label} yapıldı</div>
+                      </div>
+                    ))}
+                  </div>
+                  {renderSection("🎬 Yapım Videoları", m.yapim, "#34C759")}
+                  {renderSection("📱 Akım Videoları",  m.akim,  "#7B68EE")}
+                  {m.diger.length > 0 && renderSection(`❓ Sınıflandırılmadı`, m.diger, "#555")}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // ── RENDER ────────────────────────────────────────────────────────────────────
   // Survey public page — no login needed
@@ -1748,7 +1984,7 @@ export default function App(){
 
   if(!role) return <LoginScreen onLogin={r=>{setRole(r);setActiveTab(r==="mudur"?"mudur":"onay");}}/>;
 
-  const adminTabs=[{id:"onay",label:"Onay Takibi",icon:"calendar"},{id:"venues",label:"Mekanlar",icon:"camera"},{id:"anket",label:"Anket",icon:"phone"},{id:"share",label:"Paylaş",icon:"whatsapp"},{id:"dashboard",label:"Dashboard",icon:"stock"}];
+  const adminTabs=[{id:"onay",label:"Onay Takibi",icon:"calendar"},{id:"venues",label:"Mekanlar",icon:"camera"},{id:"anket",label:"Anket",icon:"phone"},{id:"share",label:"Paylaş",icon:"whatsapp"},{id:"icerik",label:"İçerik Kontrol",icon:"layers"},{id:"dashboard",label:"Dashboard",icon:"stock"}];
   const ekipTabs =[{id:"onay",label:"Onay Paneli",icon:"phone"}];
   const mudurTabs=[{id:"mudur",label:"Genel Bakış",icon:"eye"}];
   const tabs=role==="admin"?adminTabs:role==="mudur"?mudurTabs:ekipTabs;
@@ -1866,6 +2102,22 @@ export default function App(){
                     if(e.name!=="AbortError") showToast("Hata: "+e.message,"error");
                   }
                 }} style={{...s.btn("purple")}}><Icon name="refresh" size={14}/> Harddisk Tara</button>
+                <button onClick={async()=>{
+                  setLoading(p=>({...p,stokYenile:true}));
+                  try{
+                    const r=await fetch("/api/stok-say",{method:"POST"});
+                    const d=await r.json();
+                    if(!d.ok) throw new Error(d.error||"Hata");
+                    setVenues(prev=>prev.map(v=>{
+                      const stk=d.stoklar[v.name];
+                      return stk!==undefined?{...v,stock:stk}:v;
+                    }));
+                    showToast(`✅ ${d.guncellenen} mekan stoğu güncellendi`);
+                  }catch(e){showToast("Stok güncelleme hatası: "+e.message,"error");}
+                  finally{setLoading(p=>({...p,stokYenile:false}));}
+                }} disabled={loading.stokYenile} style={s.btn("ghost")}>
+                  {loading.stokYenile?<><span style={{display:"inline-block",width:12,height:12,border:"2px solid #fff4",borderTopColor:"#fff",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/> Yenileniyor...</>:<><Icon name="refresh" size={14}/> Stok Yenile</>}
+                </button>
                 <button onClick={()=>setAddModal(true)} style={s.btn()}><Icon name="plus" size={14}/> Mekan Ekle</button>
               </div>
             </div>
@@ -1885,7 +2137,7 @@ export default function App(){
                       {!venue.venueAnalysis&&!venue.instagramData&&<span style={{fontSize:10,background:"#131326",color:"#444",borderRadius:10,padding:"2px 7px",fontWeight:700}}>Video Yükle</span>}
                     </div>
                     <button onClick={e=>{e.stopPropagation();setEditVenue(venue);}} style={{...s.btn("ghost"),padding:"3px 8px",fontSize:10,flexShrink:0}}><Icon name="edit" size={11}/></button>
-                    <button onClick={e=>{e.stopPropagation();if(window.confirm(`"${venue.name}" silinsin mi?`)){setVenues(p=>p.filter(v=>v.id!==venue.id));showToast(`${venue.name} silindi`,"error");}}} style={{...s.btn("danger"),padding:"3px 8px",fontSize:10,flexShrink:0}}><Icon name="trash" size={11}/></button>
+                    <button onClick={e=>{e.stopPropagation();if(window.confirm(`"${venue.name}" silinsin mi?`)){const prev=ls("hsi_deleted_ids",[]);const newDel=[...new Set([...prev,venue.id])];try{localStorage.setItem("hsi_deleted_ids",JSON.stringify(newDel))}catch{}lastWriteRef.current.deleted_venue_ids=JSON.stringify(newDel);_supaSet("deleted_venue_ids",newDel);setVenues(p=>p.filter(v=>v.id!==venue.id));showToast(`${venue.name} silindi`,"error");}}} style={{...s.btn("danger"),padding:"3px 8px",fontSize:10,flexShrink:0}}><Icon name="trash" size={11}/></button>
                   </div>
                 </div>
               ))}
@@ -1894,6 +2146,7 @@ export default function App(){
         )}
         {activeTab==="share"&&role==="admin"&&<SharePanel/>}
         {activeTab==="anket"&&role==="admin"&&<AnketPanel/>}
+        {activeTab==="icerik"&&role==="admin"&&<div className="panel-fade"><IcerikKontrolPanel/></div>}
         {activeTab==="mudur"&&role==="mudur"&&<MudurPanel/>}
         {activeTab==="dashboard"&&role==="admin"&&(
           <>
