@@ -778,6 +778,7 @@ export default function App(){
   const [copied,setCopied]               = useState(null);
   const [toast,setToast]                 = useState(null);
   const [mudurNotu,setMudurNotuRaw]      = useState(()=>ls("hsi_mudurNotu",""));
+  const [isMobile,setIsMobile]           = useState(()=>window.innerWidth<700);
 
   const setVenues    = v=>setVenuesRaw(v);
   const setSchedule  = v=>setScheduleRaw(v);
@@ -847,6 +848,12 @@ export default function App(){
     return ()=>{ _supa.removeChannel(ch); };
   },[]);
   const weekDates = getWeekDates();
+
+  useEffect(()=>{
+    const onResize=()=>setIsMobile(window.innerWidth<700);
+    window.addEventListener("resize",onResize);
+    return ()=>window.removeEventListener("resize",onResize);
+  },[]);
 
   const showToast=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),3500);};
   const updateVenue=(id,patch)=>setVenues(prev=>prev.map(v=>v.id===id?{...v,...patch}:v));
@@ -927,10 +934,12 @@ export default function App(){
 
   // ── STYLES ────────────────────────────────────────────────────────────────────
   const s={
-    app:     {minHeight:"100vh",background:"#07070F",color:"#E2E2EE",fontFamily:"'Inter',system-ui,sans-serif",display:"flex"},
-    sidebar: {width:232,background:"#0A0A14",borderRight:"1px solid #13132200",padding:"20px 0 20px",display:"flex",flexDirection:"column",flexShrink:0,boxShadow:"1px 0 0 0 #161628"},
+    app:     {minHeight:"100vh",background:"#07070F",color:"#E2E2EE",fontFamily:"'Inter',system-ui,sans-serif",display:"flex",flexDirection:isMobile?"column":"row"},
+    sidebar: isMobile
+      ? {display:"none"}
+      : {width:232,background:"#0A0A14",borderRight:"1px solid #13132200",padding:"20px 0 20px",display:"flex",flexDirection:"column",flexShrink:0,boxShadow:"1px 0 0 0 #161628"},
     navItem: (a)=>({display:"flex",alignItems:"center",gap:10,padding:"9px 18px 9px 20px",cursor:"pointer",color:a?"#E2E2EE":"#3A3A5C",background:a?"#13132A":"transparent",borderLeft:`2px solid ${a?"#8B7CF6":"transparent"}`,fontSize:13,fontWeight:a?500:400,transition:"all 0.12s",userSelect:"none",letterSpacing:"-0.01em"}),
-    main:    {flex:1,overflow:"auto",padding:32},
+    main:    {flex:1,overflow:"auto",padding:isMobile?16:32,paddingBottom:isMobile?80:32},
     btn:     (v="primary")=>({display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:7,border:"none",cursor:"pointer",fontSize:12,fontWeight:500,transition:"all 0.12s",letterSpacing:"-0.01em",
       ...(v==="primary"?{background:"#8B7CF6",color:"#fff",boxShadow:"0 1px 8px #8B7CF633"}:
           v==="ghost"  ?{background:"transparent",color:"#525270",border:"1px solid #1E1E32"}:
@@ -1325,8 +1334,8 @@ export default function App(){
     };
     return (
       <div>
-        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:20}}>
-          <div><div style={{fontSize:24,fontWeight:800,color:"#fff",marginBottom:4}}>{role==="ekip"?"Onay Paneli":"Program & Onay"}</div><div style={{fontSize:13,color:"#555"}}>{role==="ekip"?"Mekanları ara, durumları güncelle":"Haftalık çekim programı · Onay takibi"}</div></div>
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:8}}>
+          <div><div style={{fontSize:isMobile?20:24,fontWeight:800,color:"#fff",marginBottom:4}}>{role==="ekip"?"Onay Paneli":"Program & Onay"}</div><div style={{fontSize:13,color:"#555"}}>{role==="ekip"?"Mekanları ara, durumları güncelle":"Haftalık çekim programı · Onay takibi"}</div></div>
           {role==="admin"&&<button onClick={generateSchedule} style={s.btn("ghost")}><Icon name="sparkle" size={14}/> Yeniden Oluştur</button>}
         </div>
 
@@ -1375,40 +1384,43 @@ export default function App(){
           <div style={{background:"#0A0A14",borderRadius:6,height:8,overflow:"hidden",marginBottom:10}}>
             <div style={{height:"100%",background:"linear-gradient(90deg,#7B68EE,#34C759)",width:`${total?((confirmed+approved)/total)*100:0}%`,transition:"width 0.4s",borderRadius:6}}/>
           </div>
-          <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:isMobile?16:12,flexWrap:"wrap"}}>
             {[["🔒",confirmed,"Kesinleşti","#7B68EE"],["✅",approved,"Onaylandı","#34C759"],["❌",postponed,"Ertelendi","#FF3B30"],["⬜",total-confirmed-approved-postponed,"Bekliyor","#444"]].map(([icon,n,label,color])=>(
-              <div key={label} style={{fontSize:12,color}}><span style={{fontWeight:800}}>{icon} {n}</span> <span style={{color:"#444"}}>{label}</span></div>
+              <div key={label} style={{fontSize:isMobile?13:12,color}}><span style={{fontWeight:800}}>{icon} {n}</span> <span style={{color:"#444"}}>{label}</span></div>
             ))}
           </div>
           {readyToSend&&<div style={{marginTop:10,background:"#34C75918",border:"1px solid #34C75933",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#34C759",fontWeight:600}}>✅ Tüm mekanlar onaylandı! Program gönderilebilir.</div>}
         </div>
 
         {/* Grid */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12}}>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(5,1fr)",gap:isMobile?10:12}}>
           {weekDates.map(({day,date})=>{
             const slots=schedule[day]||[];
             return (
-              <div key={day} style={{background:"#0E0E1C",border:"1px solid #1A1A2E",borderRadius:12,padding:14}}>
-                <div style={{fontSize:11,fontWeight:700,color:"#7B68EE",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:2}}>{day}</div>
-                <div style={{fontSize:10,color:"#444",marginBottom:12}}>{date}</div>
+              <div key={day} style={{background:"#0E0E1C",border:"1px solid #1A1A2E",borderRadius:12,padding:isMobile?12:14}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:isMobile?10:2}}>
+                  <div style={{fontSize:isMobile?13:11,fontWeight:700,color:"#7B68EE",letterSpacing:"0.1em",textTransform:"uppercase"}}>{day}</div>
+                  <div style={{fontSize:isMobile?12:10,color:"#555",fontWeight:isMobile?600:400}}>{date}</div>
+                </div>
+                {!isMobile&&<div style={{marginBottom:12}}/>}
                 {slots.map((slot)=>{
                   const v=venues.find(vv=>vv.id===slot.venueId);if(!v)return null;
                   const isEditingNote=noteEditing===`${day}_${slot.venueId}`;
                   const waMsg=buildVenueWAMessage(v,day,date);
                   return (
-                    <div key={slot.venueId} style={{background:"#0A0A14",border:`1px solid ${v.color}33`,borderRadius:10,padding:10,marginBottom:8,borderTop:`2px solid ${v.color}`}}>
+                    <div key={slot.venueId} style={{background:"#0A0A14",border:`1px solid ${v.color}33`,borderRadius:10,padding:isMobile?12:10,marginBottom:isMobile?10:8,borderTop:`2px solid ${v.color}`}}>
                       {role==="admin"
-                        ?<select value={slot.venueId} onChange={e=>swapVenueInSlot(day,slot.venueId,e.target.value)} style={{background:"#0E0E1C",border:"none",color:"#fff",fontSize:12,fontWeight:700,width:"100%",marginBottom:6,cursor:"pointer",outline:"none"}}><option value="">— Hiçbiri —</option>{venues.map(vv=><option key={vv.id} value={vv.id}>{vv.name}</option>)}</select>
-                        :<div style={{fontSize:12,fontWeight:700,color:"#fff",marginBottom:6}}>{v.name}</div>}
+                        ?<select value={slot.venueId} onChange={e=>swapVenueInSlot(day,slot.venueId,e.target.value)} style={{background:"#0E0E1C",border:"none",color:"#fff",fontSize:isMobile?14:12,fontWeight:700,width:"100%",marginBottom:8,cursor:"pointer",outline:"none"}}><option value="">— Hiçbiri —</option>{venues.map(vv=><option key={vv.id} value={vv.id}>{vv.name}</option>)}</select>
+                        :<div style={{fontSize:isMobile?14:12,fontWeight:700,color:"#fff",marginBottom:8}}>{v.name}</div>}
                       <StockBadge stock={v.stock}/>
-                      <div style={{marginTop:6,marginBottom:6}}><StatusBadge status={slot.status}/></div>
-                      <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:6}}>
+                      <div style={{marginTop:8,marginBottom:8}}><StatusBadge status={slot.status}/></div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:isMobile?6:4,marginBottom:8}}>
                         {[["aranıyor","📞","warn"],["onaylandi","✅","success"],["ertelendi","❌","danger"],...(role==="admin"?[["kesinlesti","🔒","purple"]]:[[]])].filter(x=>x.length).map(([st2,icon,variant])=>(
-                          <button key={st2} onClick={()=>updateSlotStatus(day,slot.venueId,st2)} style={{...s.btn(slot.status===st2?variant:"ghost"),padding:"3px 7px",fontSize:10,opacity:slot.status===st2?1:0.6}}>{icon}</button>
+                          <button key={st2} onClick={()=>updateSlotStatus(day,slot.venueId,st2)} style={{...s.btn(slot.status===st2?variant:"ghost"),padding:isMobile?"6px 12px":"3px 7px",fontSize:isMobile?13:10,opacity:slot.status===st2?1:0.6}}>{icon} {isMobile?(st2==="aranıyor"?"Aranıyor":st2==="onaylandi"?"Onaylandı":st2==="ertelendi"?"Ertelendi":"Kesinleşti"):""}</button>
                         ))}
                       </div>
-                      <a href={v.phone?`https://wa.me/${v.phone.replace(/[^0-9]/g,"")}?text=${encodeURIComponent(waMsg)}`:`https://wa.me/?text=${encodeURIComponent(waMsg)}`} target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",gap:4,fontSize:10,color:"#25D366",background:"#25D36618",border:"1px solid #25D36633",borderRadius:6,padding:"3px 7px",textDecoration:"none",fontWeight:600,marginBottom:6}}>
-                        <Icon name="whatsapp" size={10}/> {v.phone?"Randevu WA":"WA (numara yok)"}
+                      <a href={v.phone?`https://wa.me/${v.phone.replace(/[^0-9]/g,"")}?text=${encodeURIComponent(waMsg)}`:`https://wa.me/?text=${encodeURIComponent(waMsg)}`} target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",gap:6,fontSize:isMobile?13:10,color:"#25D366",background:"#25D36618",border:"1px solid #25D36633",borderRadius:8,padding:isMobile?"8px 12px":"3px 7px",textDecoration:"none",fontWeight:600,marginBottom:8}}>
+                        <Icon name="whatsapp" size={isMobile?14:10}/> {v.phone?"Randevu WA":"WA (numara yok)"}
                       </a>
                       <div style={{borderTop:"1px solid #16162A",paddingTop:8,marginTop:4}}>
                         {/* ── EKİP: fikir yazma formu ── */}
@@ -1593,12 +1605,12 @@ export default function App(){
       <div>
         <div style={{marginBottom:24}}>
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
-            <div style={{fontSize:24,fontWeight:800,color:"#fff"}}>Haftalık Operasyon Takibi</div>
+            <div style={{fontSize:isMobile?18:24,fontWeight:800,color:"#fff"}}>Haftalık Operasyon Takibi</div>
             <div style={{background:"#F4A62322",border:"1px solid #F4A62333",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700,color:"#F4A623"}}>👁 Salt Okunur</div>
           </div>
           <div style={{color:"#555",fontSize:13}}>{new Date().toLocaleDateString("tr-TR",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</div>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:24}}>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:isMobile?10:12,marginBottom:24}}>
           {[{val:`${progressPct}%`,label:"Randevu Onay Oranı",color:"#34C759",sub:`${st_counts.onaylandi+st_counts.kesinlesti}/${total2}`,icon:"✅"},{val:`${icerikPct}%`,label:"İçerik Onay Oranı",color:"#7B68EE",sub:`${icerikOnaylanan}/${total2}`,icon:"📋"},{val:st_counts.ertelendi,label:"Ertelenen",color:"#FF3B30",sub:"bu hafta",icon:"❌"},{val:venues.filter(v=>v.stock<=3).length,label:"Düşük Stok",color:"#FF9500",sub:"mekan",icon:"⚠️"}].map((k,i)=>(
             <div key={i} className="stat-card" style={{background:`linear-gradient(135deg,#0E0E1C,${k.color}08)`,border:`1px solid ${k.color}22`,borderRadius:12,padding:18,position:"relative",overflow:"hidden"}}>
               <div style={{position:"absolute",top:12,right:14,fontSize:20,opacity:0.2}}>{k.icon}</div>
@@ -2186,10 +2198,26 @@ export default function App(){
         )}
       </div>
 
+      {/* Mobile Bottom Navigation */}
+      {isMobile&&(
+        <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#0A0A14",borderTop:"1px solid #161628",display:"flex",alignItems:"stretch",zIndex:200,paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
+          {tabs.map(t=>(
+            <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,padding:"10px 4px",background:activeTab===t.id?"#13132A":"transparent",border:"none",cursor:"pointer",color:activeTab===t.id?"#8B7CF6":"#3A3A5C",borderTop:`2px solid ${activeTab===t.id?"#8B7CF6":"transparent"}`,transition:"all 0.12s",minHeight:56}}>
+              <Icon name={t.icon} size={18}/>
+              <span style={{fontSize:9,fontWeight:activeTab===t.id?600:400,letterSpacing:"-0.01em",whiteSpace:"nowrap"}}>{t.label}</span>
+            </button>
+          ))}
+          <button onClick={()=>setRole(null)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,padding:"10px 4px",background:"transparent",border:"none",cursor:"pointer",color:"#3A3A5C",borderTop:"2px solid transparent",minHeight:56}}>
+            <Icon name="user" size={18}/>
+            <span style={{fontSize:9,fontWeight:400,letterSpacing:"-0.01em"}}>Çıkış</span>
+          </button>
+        </div>
+      )}
+
       {addModal&&<AddVenueModal onClose={()=>setAddModal(false)}/>}
       {editVenue&&<EditVenueModal venue={venues.find(v=>v.id===editVenue.id)||editVenue} onClose={()=>setEditVenue(null)}/>}
       {selectedVenue&&<VenueModal venue={venues.find(v=>v.id===selectedVenue.id)||selectedVenue} onClose={()=>setSelectedVenue(null)}/>}
-      {toast&&<div style={{position:"fixed",bottom:24,right:24,background:toast.type==="error"?"#FF3B30":toast.type==="info"?"#7B68EE":"#34C759",color:"#fff",padding:"12px 18px",borderRadius:10,fontSize:13,fontWeight:600,zIndex:999,boxShadow:"0 8px 32px #0008",maxWidth:320,backdropFilter:"blur(8px)",animation:"toastPop 0.35s cubic-bezier(0.34,1.56,0.64,1)",display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:16}}>{toast.type==="error"?"❌":toast.type==="info"?"⏳":"✅"}</span>{toast.msg}</div>}
+      {toast&&<div style={{position:"fixed",bottom:isMobile?72:24,right:isMobile?12:24,left:isMobile?12:"auto",background:toast.type==="error"?"#FF3B30":toast.type==="info"?"#7B68EE":"#34C759",color:"#fff",padding:"12px 18px",borderRadius:10,fontSize:13,fontWeight:600,zIndex:999,boxShadow:"0 8px 32px #0008",maxWidth:320,backdropFilter:"blur(8px)",animation:"toastPop 0.35s cubic-bezier(0.34,1.56,0.64,1)",display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:16}}>{toast.type==="error"?"❌":toast.type==="info"?"⏳":"✅"}</span>{toast.msg}</div>}
     </div>
   );
 }
