@@ -45,6 +45,12 @@ const INITIAL_VENUES = [
   { id:16, name:"Ege Büfe",            concept:"", stock:0,  color:"#00CED1", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
 ];
 
+// Electron'da file:// protokolüyle yüklendiğinde /api/ URL'leri çalışmaz,
+// doğrudan server.py portuna yönlendiririz.
+const API_BASE = (typeof window !== "undefined" && window.location.protocol === "file:")
+  ? "http://localhost:8765"
+  : "";
+
 // ── SUPABASE SHARED STATE ──────────────────────────────────────────────────────
 // app_state tablosu: key/value çiftleri olarak tüm paylaşılan state'i tutar.
 // Admin localhost'tan, Ekip/Patron Vercel'den bağlanır; Supabase ortak veri katmanıdır.
@@ -1882,7 +1888,7 @@ export default function App(){
     const harddisTara = async () => {
       setScanning(true); setHata(null);
       try {
-        const r = await fetch("/api/icerik-tara");
+        const r = await fetch(`${API_BASE}/api/icerik-tara`);
         const d = await r.json();
         if (!d.ok) throw new Error(d.error || "Tarama başarısız");
         setTarama(d);
@@ -2123,7 +2129,7 @@ export default function App(){
                   if(!isLocal){showToast("Stok Yenile yalnızca admin bilgisayarından (localhost) çalışır","error");return;}
                   setLoading(p=>({...p,stokYenile:true}));
                   try{
-                    const r=await fetch("/api/stok-say",{method:"POST"});
+                    const r=await fetch(`${API_BASE}/api/stok-say`,{method:"POST"});
                     const text=await r.text();
                     if(!text) throw new Error("server.py çalışmıyor — terminalde başlat");
                     const d=JSON.parse(text);

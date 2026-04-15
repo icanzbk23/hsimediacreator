@@ -8,6 +8,7 @@ const hasTLS  = fs.existsSync(tlsKey) && fs.existsSync(tlsCert);
 
 export default defineConfig({
   plugins: [react()],
+  base: "./",   // Electron packaged app için göreceli yollar
   server: {
     ...(hasTLS ? {
       https: {
