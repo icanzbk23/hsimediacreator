@@ -42,6 +42,7 @@ const INITIAL_VENUES = [
   { id:13, name:"Sezai Usta",          concept:"Kebap mangal", stock:3, color:"#E67E22", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
   { id:14, name:"Musta Döner",         concept:"", stock:6,  color:"#4A7C8E", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
   { id:15, name:"Saudade",             concept:"", stock:0,  color:"#8B1A2F", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
+  { id:16, name:"Ege Büfe",            concept:"", stock:0,  color:"#00CED1", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
 ];
 
 // ── SUPABASE SHARED STATE ──────────────────────────────────────────────────────
@@ -2063,16 +2064,19 @@ export default function App(){
                   const MEKAN_ESLESTIRME={
                     "MİKADO":               "Mikado Restaurant",
                     "HARVEY BURGER":        "Harvey Burger",
-                    "BATURA CAFE":          "Batura Cafe",
                     "SULTAN SOFRASI":       "Sultan Sofrası",
                     "EGE DÖNER":            "Ege Döner",
-                    "KUBAN":               "Kuban Kuruyemiş",
-                    "musta":               "Musta Döner",
+                    "EGE BÜFE":             "Ege Büfe",
+                    "KUBAN":                "Kuban Kuruyemiş",
+                    "MUSTA":                "Musta Döner",
                     "SÜLEYMAN USTA":        "Süleyman Usta Döner",
                     "İSTE ÇİFTLİK":        "İSTE Çiftlik",
                     "SEZAİ USTA":           "Sezai Usta",
                     "SÜTLÜ KAVURMA":        "Sütlü Kavurma",
-                    "YSANTOCHİA":           "Antochia Döner",
+                    "YSANTOCHİA":           "YSANTOCHİA",
+                    "SİNAN ÖZDEMİR":        "Sinan Özdemir",
+                    "ŞENÖZ":                "Şenöz",
+                    "SAUDADE":              "Saudade",
                   };
                   try{
                     showToast("'s' klasörünü seçin (Elements diski içindeki s/ klasörü)...");
