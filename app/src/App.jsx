@@ -2107,10 +2107,14 @@ export default function App(){
                   }
                 }} style={{...s.btn("purple")}}><Icon name="refresh" size={14}/> Harddisk Tara</button>
                 <button onClick={async()=>{
+                  const isLocal=["localhost","127.0.0.1"].includes(window.location.hostname);
+                  if(!isLocal){showToast("Stok Yenile yalnızca admin bilgisayarından (localhost) çalışır","error");return;}
                   setLoading(p=>({...p,stokYenile:true}));
                   try{
                     const r=await fetch("/api/stok-say",{method:"POST"});
-                    const d=await r.json();
+                    const text=await r.text();
+                    if(!text) throw new Error("server.py çalışmıyor — terminalde başlat");
+                    const d=JSON.parse(text);
                     if(!d.ok) throw new Error(d.error||"Hata");
                     setVenues(prev=>prev.map(v=>{
                       const stk=d.stoklar[v.name];
