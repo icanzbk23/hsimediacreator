@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import hsiLogo from "./hsi_logo.png";
 import { createClient } from "@supabase/supabase-js";
 import {
   Camera, Calendar, Mail, Copy, Sparkles, Plus, Trash2, ChartColumn,
@@ -551,8 +552,8 @@ const LoginScreen = ({onLogin})=>{
       <div style={{width:"100%",maxWidth:400,position:"relative",zIndex:1}}>
         {/* Logo */}
         <div style={{textAlign:"center",marginBottom:40}}>
-          <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:56,height:56,borderRadius:15,background:"linear-gradient(135deg,#8B7CF6 0%,#5EEAD4 100%)",marginBottom:16,boxShadow:"0 8px 24px #8B7CF630"}}>
-            <Camera size={24} strokeWidth={1.8} color="#fff"/>
+          <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:72,height:72,borderRadius:18,overflow:"hidden",marginBottom:16,boxShadow:"0 8px 24px #8B7CF630"}}>
+            <img src={hsiLogo} alt="HSI Medya" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
           </div>
           <div style={{fontSize:20,fontWeight:600,color:"#E2E2EE",letterSpacing:"-0.03em"}}>HSI Medya</div>
           <div style={{fontSize:11,color:"#28284A",marginTop:4,letterSpacing:"0.06em",textTransform:"uppercase"}}>Content Planner</div>
@@ -1320,6 +1321,7 @@ export default function App(){
     const [noteVal,setNoteVal]=useState("");
     const [selectedIdeas,setSelectedIdeas]=useState({});
     const [ekipFikirForm,setEkipFikirForm]=useState(null); // key = "day_venueId"
+    const [confirmSend,setConfirmSend]=useState(null); // key = "day_venueId"
     const [ekipFikirBaslik,setEkipFikirBaslik]=useState("");
     const [ekipFikirKonsept,setEkipFikirKonsept]=useState("");
     const [addPickerDay,setAddPickerDay]=useState(null);
@@ -1416,7 +1418,7 @@ export default function App(){
                   return (
                     <div key={slot.venueId} style={{background:"#0A0A14",border:`1px solid ${v.color}33`,borderRadius:10,padding:isMobile?12:10,marginBottom:isMobile?10:8,borderTop:`2px solid ${v.color}`}}>
                       {role==="admin"
-                        ?<select value={slot.venueId} onChange={e=>swapVenueInSlot(day,slot.venueId,e.target.value)} style={{background:"#0E0E1C",border:"none",color:"#fff",fontSize:isMobile?14:12,fontWeight:700,width:"100%",marginBottom:8,cursor:"pointer",outline:"none"}}><option value="">— Hiçbiri —</option>{venues.map(vv=><option key={vv.id} value={vv.id}>{vv.name}</option>)}</select>
+                        ?<select value={slot.venueId} onChange={e=>swapVenueInSlot(day,slot.venueId,e.target.value)} style={{background:"#0E0E1C",border:"none",color:"#fff",fontSize:isMobile?14:12,fontWeight:700,width:"100%",marginBottom:8,cursor:"pointer",outline:"none"}}><option value="">— Hiçbiri —</option>{[...venues].sort((a,b)=>a.name.localeCompare(b.name,"tr")).map(vv=><option key={vv.id} value={vv.id}>{vv.name}</option>)}</select>
                         :<div style={{fontSize:isMobile?14:12,fontWeight:700,color:"#fff",marginBottom:8}}>{v.name}</div>}
                       <StockBadge stock={v.stock}/>
                       <div style={{marginTop:8,marginBottom:8}}><StatusBadge status={slot.status}/></div>
@@ -1469,26 +1471,64 @@ export default function App(){
                                 <button onClick={()=>{setEkipFikirForm(slotKey);setEkipFikirBaslik("");setEkipFikirKonsept("");}} style={{...s.btn("ghost"),padding:"3px 8px",fontSize:10,width:"100%",justifyContent:"center",marginBottom:6}}>✍️ Fikir Yaz</button>
                               )}
                               {/* Gönderilecek içerik seçimi (AI + onaylı ekip fikirleri) */}
-                              {gonderilebilir.length>0&&(
+                              {gonderilebilir.length>0&&(()=>{
+                                const seciliIdxs=selectedIdeas[slotKey]||[];
+                                const [confirmOpen,setConfirmOpen]=[confirmSend===slotKey,setConfirmSend];
+                                return(
                                 <div>
-                                  <div style={{fontSize:10,color:"#7B68EE",fontWeight:700,marginBottom:4}}>📋 Gönderilecek içerikleri seç:</div>
-                                  {gonderilebilir.map((idea,ii)=>(
-                                    <label key={ii} style={{display:"flex",alignItems:"flex-start",gap:5,marginBottom:4,cursor:"pointer"}}>
-                                      <input type="checkbox" checked={(selectedIdeas[slotKey]||[]).includes(ii)} onChange={e=>{setSelectedIdeas(prev=>{const cur=prev[slotKey]||[];return{...prev,[slotKey]:e.target.checked?[...cur,ii]:cur.filter(x=>x!==ii)};});}} style={{marginTop:2,flexShrink:0}}/>
-                                      <span style={{fontSize:10,color:ii>=aiFikirleri.length?"#FF9500":"#ccc",lineHeight:1.4}}>{idea.baslik}{ii>=aiFikirleri.length?" ✍️":""}</span>
-                                    </label>
-                                  ))}
-                                  {(selectedIdeas[slotKey]||[]).length>0&&(
-                                    <button onClick={()=>{
-                                      const idxs=selectedIdeas[slotKey]||[];const secilen=gonderilebilir.filter((_,ii)=>idxs.includes(ii));
-                                      const satirlar=secilen.map((id,n)=>[`${n+1}. *${id.baslik}*`,id.konsept,id.cekim_tarzi?`Cekim: ${id.cekim_tarzi}`:"",id.muzik_trendi?`Muzik: ${id.muzik_trendi}`:""].filter(Boolean).join("\n")).join("\n\n");
-                                      const msg=`Merhaba ${v.name}!\n\nBu hafta planlanan icerik fikirleri:\n\n${satirlar}\n\nGoruslerinizi bekliyoruz!\n_HSI Medya_`;
-                                      window.open(v.phone?`https://wa.me/${v.phone.replace(/[^0-9]/g,"")}?text=${encodeURIComponent(msg)}`:`https://wa.me/?text=${encodeURIComponent(msg)}`,"_blank");
-                                      updateSlotField(day,slot.venueId,"icerikGonderildi",true);updateSlotField(day,slot.venueId,"gonderilenIcerik",secilen.map(id=>id.baslik).join(", "));showToast(`${v.name} için içerik gönderildi!`);
-                                    }} style={{...s.btn("primary"),padding:"4px 9px",fontSize:10,width:"100%",justifyContent:"center",marginTop:4}}><Icon name="whatsapp" size={10}/> İçerikleri Gönder</button>
+                                  <div style={{fontSize:isMobile?13:10,color:"#7B68EE",fontWeight:700,marginBottom:isMobile?8:4}}>📋 Gönderilecek içerikleri seç:</div>
+                                  {gonderilebilir.map((idea,ii)=>{
+                                    const checked=seciliIdxs.includes(ii);
+                                    const isEkip=ii>=aiFikirleri.length;
+                                    return(
+                                      <div key={ii} onClick={()=>{setSelectedIdeas(prev=>{const cur=prev[slotKey]||[];return{...prev,[slotKey]:checked?cur.filter(x=>x!==ii):[...cur,ii]};});}}
+                                        style={{display:"flex",alignItems:"center",gap:isMobile?10:6,marginBottom:isMobile?6:4,cursor:"pointer",
+                                          background:checked?(isEkip?"#FF950018":"#7B68EE18"):"#0E0E1C",
+                                          border:`1px solid ${checked?(isEkip?"#FF950055":"#7B68EE55"):"#1A1A2E"}`,
+                                          borderRadius:isMobile?10:6,padding:isMobile?"10px 12px":"4px 8px",
+                                          transition:"all 0.15s",userSelect:"none",WebkitUserSelect:"none"}}>
+                                        <div style={{width:isMobile?22:14,height:isMobile?22:14,borderRadius:isMobile?6:4,border:`2px solid ${checked?(isEkip?"#FF9500":"#7B68EE"):"#333"}`,
+                                          background:checked?(isEkip?"#FF9500":"#7B68EE"):"transparent",flexShrink:0,
+                                          display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s"}}>
+                                          {checked&&<span style={{color:"#fff",fontSize:isMobile?13:9,lineHeight:1}}>✓</span>}
+                                        </div>
+                                        <span style={{fontSize:isMobile?13:10,color:isEkip?"#FF9500":"#ccc",lineHeight:1.4,flex:1}}>{idea.baslik}{isEkip?" ✍️":""}</span>
+                                      </div>
+                                    );
+                                  })}
+                                  {seciliIdxs.length>0&&(
+                                    confirmOpen?(
+                                      <div style={{background:"#7B68EE18",border:"2px solid #7B68EE55",borderRadius:isMobile?12:8,padding:isMobile?"12px 14px":"8px 10px",marginTop:isMobile?8:4}}>
+                                        <div style={{fontSize:isMobile?13:10,color:"#7B68EE",fontWeight:700,marginBottom:6}}>
+                                          {seciliIdxs.length} içerik gönderilecek — emin misin?
+                                        </div>
+                                        <div style={{fontSize:isMobile?11:9,color:"#888",marginBottom:isMobile?10:6,lineHeight:1.4}}>
+                                          {gonderilebilir.filter((_,ii)=>seciliIdxs.includes(ii)).map(id=>id.baslik).join(", ")}
+                                        </div>
+                                        <div style={{display:"flex",gap:isMobile?8:4}}>
+                                          <button onClick={()=>{
+                                            const secilen=gonderilebilir.filter((_,ii)=>seciliIdxs.includes(ii));
+                                            const satirlar=secilen.map((id,n)=>[`${n+1}. *${id.baslik}*`,id.konsept,id.cekim_tarzi?`Cekim: ${id.cekim_tarzi}`:"",id.muzik_trendi?`Muzik: ${id.muzik_trendi}`:""].filter(Boolean).join("\n")).join("\n\n");
+                                            const msg=`Merhaba ${v.name}!\n\nBu hafta planlanan icerik fikirleri:\n\n${satirlar}\n\nGoruslerinizi bekliyoruz!\n_HSI Medya_`;
+                                            window.open(v.phone?`https://wa.me/${v.phone.replace(/[^0-9]/g,"")}?text=${encodeURIComponent(msg)}`:`https://wa.me/?text=${encodeURIComponent(msg)}`,"_blank");
+                                            updateSlotField(day,slot.venueId,"icerikGonderildi",true);updateSlotField(day,slot.venueId,"gonderilenIcerik",secilen.map(id=>id.baslik).join(", "));showToast(`${v.name} için içerik gönderildi!`);setConfirmOpen(null);
+                                          }} style={{...s.btn("primary"),padding:isMobile?"10px 0":"4px 8px",fontSize:isMobile?13:10,flex:1,justifyContent:"center"}}>
+                                            <Icon name="whatsapp" size={isMobile?14:10}/> Evet, Gönder
+                                          </button>
+                                          <button onClick={()=>setConfirmOpen(null)} style={{...s.btn("ghost"),padding:isMobile?"10px 14px":"4px 8px",fontSize:isMobile?13:10,flexShrink:0}}>
+                                            İptal
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ):(
+                                      <button onClick={()=>setConfirmOpen(slotKey)} style={{...s.btn("primary"),padding:isMobile?"12px 0":"4px 9px",fontSize:isMobile?14:10,width:"100%",justifyContent:"center",marginTop:isMobile?8:4}}>
+                                        <Icon name="whatsapp" size={isMobile?16:10}/> {seciliIdxs.length} İçerik Gönder
+                                      </button>
+                                    )
                                   )}
                                 </div>
-                              )}
+                                );
+                              })()}
                               {gonderilebilir.length===0&&ekipFikirleri.length===0&&<div style={{fontSize:10,color:"#444",fontStyle:"italic"}}>AI fikri yok — yukarıdan kendi fikirlerini yaz</div>}
                               {gonderilebilir.length===0&&ekipFikirleri.length>0&&<div style={{fontSize:10,color:"#FF9500",fontStyle:"italic"}}>Fikirler admin onayı bekleniyor…</div>}
                             </div>
@@ -1557,7 +1597,7 @@ export default function App(){
                     ?<div style={{marginTop:6,display:"flex",gap:4}}>
                         <select value={addPickerVal} onChange={e=>setAddPickerVal(e.target.value)} style={{background:"#0A0A14",border:"1px solid #2A2A3E",borderRadius:6,color:"#fff",fontSize:11,flex:1,padding:"4px 6px",outline:"none"}}>
                           <option value="">Mekan seç...</option>
-                          {venues.filter(v=>!(schedule[day]||[]).some(s=>s.venueId===v.id)).map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
+                          {[...venues].sort((a,b)=>a.name.localeCompare(b.name,"tr")).filter(v=>!(schedule[day]||[]).some(s=>s.venueId===v.id)).map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
                         </select>
                         <button onClick={()=>{if(addPickerVal){addVenueToDay(day,addPickerVal);setAddPickerDay(null);setAddPickerVal("");}}} style={{...s.btn("success"),padding:"4px 8px",fontSize:11}}>✓</button>
                         <button onClick={()=>{setAddPickerDay(null);setAddPickerVal("");}} style={{...s.btn("ghost"),padding:"4px 8px",fontSize:11}}>✕</button>
@@ -1655,13 +1695,15 @@ export default function App(){
             <div style={{background:"#F4A62322",color:"#F4A623",border:"1px solid #F4A62333",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:600}}>👁 Salt Okunur</div>
           </div>
           {Object.keys(schedule).length===0&&<div style={{fontSize:12,color:"#444",fontStyle:"italic"}}>Henüz program girilmedi.</div>}
-          {Object.entries(schedule).map(([day,slots])=>{
+          {DAYS.map(day=>{
+            const slots=schedule[day];
             if(!slots||!slots.length)return null;
+            const sortedSlots=[...slots].sort((a,b)=>{const va=venues.find(v=>v.id===a.venueId);const vb=venues.find(v=>v.id===b.venueId);return(va?.name||"").localeCompare(vb?.name||"","tr");});
             return(
               <div key={day} style={{marginBottom:14}}>
                 <div style={{fontSize:11,fontWeight:700,color:"#7B68EE",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6,paddingBottom:4,borderBottom:"1px solid #1A1A2E"}}>{day}</div>
                 <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                  {slots.map((slot,i)=>{
+                  {sortedSlots.map((slot,i)=>{
                     const v=venues.find(vv=>vv.id===slot.venueId);if(!v)return null;
                     const st=STATUS[slot.status]||STATUS.taslak;
                     return(
@@ -1698,9 +1740,7 @@ export default function App(){
 
         {/* Ekip & Admin Notları */}
         {(()=>{
-          const notluSlotlar=Object.entries(schedule).flatMap(([day,slots])=>
-            slots.filter(s=>s.ekipNotu||s.note).map(s=>({...s,day}))
-          );
+          const notluSlotlar=DAYS.flatMap(day=>{const slots=schedule[day]||[];return slots.filter(s=>s.ekipNotu||s.note).map(s=>({...s,day}));}).sort((a,b)=>{const va=venues.find(v=>v.id===a.venueId);const vb=venues.find(v=>v.id===b.venueId);return(va?.name||"").localeCompare(vb?.name||"","tr");});
           if(!notluSlotlar.length) return null;
           return(
             <div style={{background:"#0E0E1C",border:"1px solid #1A1A2E",borderRadius:12,padding:20,marginBottom:20}}>
@@ -1732,9 +1772,7 @@ export default function App(){
 
         {/* Gönderilen İçerikler */}
         {(()=>{
-          const gonderilenSlotlar=Object.entries(schedule).flatMap(([day,slots])=>
-            slots.filter(s=>s.icerikGonderildi&&s.gonderilenIcerik).map(s=>({...s,day}))
-          );
+          const gonderilenSlotlar=DAYS.flatMap(day=>{const slots=schedule[day]||[];return slots.filter(s=>s.icerikGonderildi&&s.gonderilenIcerik).map(s=>({...s,day}));}).sort((a,b)=>{const va=venues.find(v=>v.id===a.venueId);const vb=venues.find(v=>v.id===b.venueId);return(va?.name||"").localeCompare(vb?.name||"","tr");});
           if(!gonderilenSlotlar.length) return null;
           return(
             <div style={{background:"#0E0E1C",border:"1px solid #1A1A2E",borderRadius:12,padding:20,marginBottom:20}}>
@@ -1805,7 +1843,7 @@ export default function App(){
           <button onClick={()=>setAnketResults({})} style={s.btn("danger")}><Icon name="trash" size={14}/> Sıfırla</button>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {venues.map(venue=>{const result=anketResults[venue.id]||{};return(
+          {[...venues].sort((a,b)=>a.name.localeCompare(b.name,"tr")).map(venue=>{const result=anketResults[venue.id]||{};return(
             <div key={venue.id} style={{background:"#0E0E1C",border:`1px solid ${result.gonderildi?"#34C75933":"#1A1A2E"}`,borderRadius:12,padding:14,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
               <div style={{display:"flex",alignItems:"center",gap:8,minWidth:180}}><div style={{width:10,height:10,borderRadius:"50%",background:venue.color,flexShrink:0}}/><div style={{fontSize:13,fontWeight:700,color:"#fff"}}>{venue.name}</div></div>
               <div style={{flex:1,minWidth:180}}>{venue.phone?<div style={{fontSize:11,color:"#34C759",fontFamily:"monospace"}}>{venue.phone}</div>:<div style={{fontSize:11,color:"#FF3B30",fontStyle:"italic"}}>Numara yok</div>}</div>
@@ -2125,7 +2163,7 @@ export default function App(){
                   }
                 }} style={{...s.btn("purple")}}><Icon name="refresh" size={14}/> Harddisk Tara</button>
                 <button onClick={async()=>{
-                  const isLocal=["localhost","127.0.0.1"].includes(window.location.hostname);
+                  const isLocal=["localhost","127.0.0.1",""].includes(window.location.hostname)||window.location.protocol==="file:";
                   if(!isLocal){showToast("Stok Yenile yalnızca admin bilgisayarından (localhost) çalışır","error");return;}
                   setLoading(p=>({...p,stokYenile:true}));
                   try{
@@ -2148,7 +2186,7 @@ export default function App(){
               </div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:12}}>
-              {venues.map(venue=>(
+              {[...venues].sort((a,b)=>a.name.localeCompare(b.name,"tr")).map(venue=>(
                 <div key={venue.id} className="venue-card" style={s.card(venue.color)} onClick={()=>setSelectedVenue(venue)}>
                   <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:8}}>
                     <div style={{display:"flex",alignItems:"center",gap:8,flex:1}}><div style={{width:10,height:10,borderRadius:"50%",background:venue.color,flexShrink:0,marginTop:3}}/><div style={{fontSize:14,fontWeight:700,color:"#fff"}}>{venue.name}</div></div>

@@ -61,7 +61,10 @@ Endpoints:
 
 ## Architecture
 
-The entire application lives in a **single file**: `app/src/App.jsx` (~2114 lines). There is no routing library — views are controlled by `activeTab` state and the user's `role`.
+The entire application lives in a **single file**: `app/src/App.jsx` (~2150 lines). There is no routing library — views are controlled by `activeTab` state and the user's `role`.
+
+### Static Assets
+- `app/src/hsi_logo.png` — imported as an ES module (`import hsiLogo from "./hsi_logo.png"`) and used in `LoginScreen` as the logo above "HSI Medya". Also used as the Electron `.app` icon (`electron/icon.icns`, generated from `hsi_logo.png` via `sips` + `iconutil`).
 
 ### Role-Based Access
 Three roles, each sees different tabs/panels:
@@ -94,6 +97,9 @@ On init, venues state merges saved `hsi_venues` with `INITIAL_VENUES`: any venue
 - `icerikGonderildi` / `gonderilenIcerik` — whether content was sent to venue, and what titles were sent
 - `icerikOnaylandi` — admin approval flag
 
+### OnayPanel Local State (inside OnayPanel component)
+- `confirmSend` — `null | "day_venueId"` string; tracks which slot's two-step send confirmation is open. When set, shows a confirmation card instead of the send button directly (prevents accidental sends on mobile).
+
 ### Schedule Slot Helpers (App scope)
 - `updateSlotStatus(day, venueId, status)` — update status field
 - `updateSlotField(day, venueId, field, val)` — update any slot field
@@ -104,7 +110,22 @@ On init, venues state merges saved `hsi_venues` with `INITIAL_VENUES`: any venue
 ### External APIs
 - **Claude API** (`VITE_ANTHROPIC_API_KEY`): called via `fetch` to `https://api.anthropic.com/v1/messages`, model `claude-sonnet-4-20250514`. Two entry points: `callClaude(prompt)` for text-only, `callClaudeWithImages(prompt, frames)` for video frame analysis. Used in VenuesPanel for venue concept analysis and AI-powered idea generation when Instagram data is absent.
 - **Apify API** (`VITE_APIFY_API_KEY`): two actors — `apify~instagram-reel-scraper` (fetches up to 20 reels per account handle via `fetchInstagramReels`) and `apify~instagram-hashtag-scraper` (fetches viral reels by category hashtags via `fetchViralByCategory`). Both poll until `SUCCEEDED`.
-- **Supabase** (`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`): on app load, reads `venues?select=name,stock` and merges stock counts into local venue state. Write-back is handled only by `stok_say.py`.
+- **Supabase** (`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`): two purposes:
+  1. Reads `venues?select=name,stock` on load to merge stock counts into local venue state (write-back via `stok_say.py` only).
+  2. **Cross-device real-time sync** via `app_state` table (key-value, keys: `"venues"`, `"schedule"`, `"mudur_notu"`). `_supaSet(key, value)` upserts; a Supabase Realtime `postgres_changes` subscription propagates changes to all connected clients. `supaReadyRef` prevents writing during initial load; `lastWriteRef` suppresses echo from the app's own writes. If `app_state` table is missing, sync silently falls back to localStorage-only.
+
+  Required SQL to create `app_state` (run once in Supabase SQL editor):
+  ```sql
+  create table if not exists app_state (
+    key        text primary key,
+    value      jsonb not null,
+    updated_at timestamptz default now()
+  );
+  alter table app_state enable row level security;
+  create policy "herkes okuyabilir" on app_state for select using (true);
+  create policy "herkes yazabilir" on app_state for all using (true) with check (true);
+  alter publication supabase_realtime add table app_state;
+  ```
 
 ### Styling
 Entirely inline CSS-in-JS. The `s` object (defined near line 100) holds reusable style helpers like `s.btn("primary")`, `s.input`, `s.card`. Global keyframe animations are injected in a `<style>` tag inside the render. Dark theme: `#0E0E1C` / `#0A0A14`.
@@ -132,3 +153,7 @@ Ideas stored in `venue.ideas` (AI or Apify-derived) or `slot.ekipFikirleri` (tea
 ### Removing a Venue Permanently
 - Remove its entry from `INITIAL_VENUES` in `App.jsx` (prevents it ever being re-seeded)
 - If it existed in a user's localStorage before removal, the `hsi_deleted_ids` key ensures it won't reappear — the delete button in VenuesPanel writes the venue `id` there automatically
+
+### Deployment
+- **Vercel**: `vercel --prod --yes` from repo root. Config in `vercel.json`: build command `cd app && npm install && npm run build`, output dir `app/dist`.
+- **Electron desktop app**: `npm run package` from repo root (builds Vite first, then packages with electron-forge). Sign the `.app` in `/tmp` to avoid macOS Finder xattr interference: `find "$TMP" -exec xattr -c {} \; && codesign --force --deep --sign - "$TMP"`, then move to Desktop. Use `npm run package` not `npm run make` (DMG maker requires native node-gyp bindings).
