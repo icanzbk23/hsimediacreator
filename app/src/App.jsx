@@ -2338,7 +2338,23 @@ export default function App(){
             {lowStockVenues.map(v=><div key={v.id} style={{fontSize:11,color:"#FF9500",opacity:0.7,marginBottom:1}}>• {v.name}: {v.stock}</div>)}
           </div>
         )}
-        <div style={{padding:"12px 20px",borderTop:"1px solid #16162A"}}>
+        {role==="admin"&&_supa&&(
+          <div style={{padding:"8px 20px 0"}}>
+            <button onClick={async()=>{
+              try{
+                await Promise.all([
+                  _supaSet("venues",venues),
+                  _supaSet("schedule",schedule),
+                  _supaSet("mudur_notu",mudurNotu),
+                ]);
+                showToast("Tüm cihazlara senkronize edildi ✓");
+              }catch(e){showToast("Senkronizasyon hatası","error");}
+            }} style={{...s.btn("ghost"),width:"100%",justifyContent:"center",fontSize:11,gap:5,color:"#5EEAD4",borderColor:"#5EEAD422"}}>
+              <RefreshCw size={11}/> Bu Veriyi Yayınla
+            </button>
+          </div>
+        )}
+        <div style={{padding:"12px 20px",borderTop:"1px solid #16162A",marginTop:8}}>
           <button onClick={()=>setRole(null)} style={{...s.btn("ghost"),width:"100%",justifyContent:"center",fontSize:11}}>Çıkış Yap</button>
         </div>
       </div>
