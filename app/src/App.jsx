@@ -59,10 +59,17 @@ const _SURL = import.meta.env.VITE_SUPABASE_URL;
 const _SKEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const _supa = (_SURL && _SKEY) ? createClient(_SURL, _SKEY) : null;
 
+// Her oturum için benzersiz ID — Realtime'da kendi yazdığımızı bu ID ile tanırız (JSON karşılaştırması yerine)
+const _SESSION_ID = Math.random().toString(36).slice(2, 10);
+
+// Değeri _sid ile sarıp yazarız; okurken _supaUnwrap ile çözeriz
 const _supaSet = async (key, value) => {
   if (!_supa) return;
-  try { await _supa.from("app_state").upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" }); } catch {}
+  try { await _supa.from("app_state").upsert({ key, value: { _sid: _SESSION_ID, _d: value }, updated_at: new Date().toISOString() }, { onConflict: "key" }); } catch {}
 };
+
+// Eski format (sarılmamış) ile yeni format (_d/_sid) her ikisini de destekler
+const _supaUnwrap = (v) => (v && typeof v === "object" && "_d" in v) ? v._d : v;
 
 function getWeekDates() {
   const today = new Date();
@@ -793,7 +800,6 @@ export default function App(){
 
   // Supabase sync kontrol ref'leri
   const supaReadyRef       = useRef(false);   // ilk yükleme bitti mi
-  const lastWriteRef       = useRef({});      // kendi yazdığımız değerleri takip et (realtime'da geri gelmesin)
   const roleRef            = useRef(null);    // closure'da güncel rolü okumak için
   const notifiedEkipIdsRef = useRef(new Set()); // bildirim gönderilen ekip fikir id'leri
   const skipWriteRef       = useRef({});      // realtime'dan gelen update'i Supabase'e geri yazma
@@ -804,8 +810,20 @@ export default function App(){
   // Admin girişinde bildirim izni iste (sadece Electron desktop)
   useEffect(()=>{
     const isElectron=window.location.protocol==="file:";
-    if(role==="admin"&&isElectron&&"Notification" in window&&Notification.permission==="default"){
-      Notification.requestPermission();
+    if(role==="admin"&&isElectron&&"Notification" in window){
+      if(Notification.permission==="default"){
+        Notification.requestPermission().then(perm=>{
+          if(perm==="granted"){
+            setTimeout(()=>new Notification("HSI Medya",{body:"Ekip fikirleri için bildirim alacaksınız ✓"}),500);
+          }
+        });
+      } else if(Notification.permission==="granted"){
+        // Her girişte sessiz test — izin gerçekten çalışıyor mu diye
+        if(!window._hsiNotifOK){
+          window._hsiNotifOK=true;
+          setTimeout(()=>new Notification("HSI Medya",{body:"Bildirimler aktif ✓",silent:true}),1000);
+        }
+      }
     }
   },[role]);
 
@@ -814,21 +832,18 @@ export default function App(){
     try{ localStorage.setItem("hsi_venues", JSON.stringify(venues)); }catch{}
     if(!supaReadyRef.current) return;
     if(skipWriteRef.current.venues){ skipWriteRef.current.venues=false; return; }
-    lastWriteRef.current.venues=JSON.stringify(venues);
     _supaSet("venues", venues);
   },[venues]);
   useEffect(()=>{
     try{ localStorage.setItem("hsi_schedule", JSON.stringify(schedule)); }catch{}
     if(!supaReadyRef.current) return;
     if(skipWriteRef.current.schedule){ skipWriteRef.current.schedule=false; return; }
-    lastWriteRef.current.schedule=JSON.stringify(schedule);
     _supaSet("schedule", schedule);
   },[schedule]);
   useEffect(()=>{
     try{ localStorage.setItem("hsi_mudurNotu", JSON.stringify(mudurNotu)); }catch{}
     if(!supaReadyRef.current) return;
     if(skipWriteRef.current.mudur_notu){ skipWriteRef.current.mudur_notu=false; return; }
-    lastWriteRef.current.mudur_notu=JSON.stringify(mudurNotu);
     _supaSet("mudur_notu", mudurNotu);
   },[mudurNotu]);
 
@@ -839,21 +854,28 @@ export default function App(){
       try{
         const {data} = await _supa.from("app_state").select("key,value");
         if(data?.length){
-          const m=Object.fromEntries(data.map(r=>[r.key,r.value]));
+          const m=Object.fromEntries(data.map(r=>[r.key, _supaUnwrap(r.value)]));
           if(m.venues?.length){
             const localDel = new Set(ls("hsi_deleted_ids",[]));
             const supaDel  = new Set(m.deleted_venue_ids||[]);
             const allDel   = new Set([...localDel,...supaDel]);
             const supaIds  = new Set(m.venues.map(v=>v.id));
             const toAdd    = INITIAL_VENUES.filter(v=>!supaIds.has(v.id)&&!allDel.has(v.id));
+            // skipWriteRef: ilk yükleme Supabase'e geri yazmasın
+            skipWriteRef.current.venues=true;
             setVenuesRaw(toAdd.length?[...m.venues,...toAdd]:m.venues);
           }
           if(m.schedule){
+            // skipWriteRef: ilk yükleme Supabase'e geri yazmasın
+            skipWriteRef.current.schedule=true;
             setScheduleRaw(m.schedule);
             // İlk yüklemede mevcut fikirleri "görüldü" olarak işaretle — açılışta bildirim gitmesin
             Object.values(m.schedule).forEach(slots=>(slots||[]).forEach(slot=>(slot.ekipFikirleri||[]).forEach(f=>notifiedEkipIdsRef.current.add(f.id))));
           }
-          if(m.mudur_notu!=null)  setMudurNotuRaw(m.mudur_notu);
+          if(m.mudur_notu!=null){
+            skipWriteRef.current.mudur_notu=true;
+            setMudurNotuRaw(m.mudur_notu);
+          }
         }
       }catch(e){ console.error("Supabase yüklenemedi:",e); }
       supaReadyRef.current=true;
@@ -865,9 +887,14 @@ export default function App(){
     if(!_supa) return;
     const ch=_supa.channel("app_state_rt")
       .on("postgres_changes",{event:"*",schema:"public",table:"app_state"},(payload)=>{
-        const {key,value}=payload.new||{};
-        if(!key||!value) return;
-        if(lastWriteRef.current[key]===JSON.stringify(value)) return; // kendi yazdığımız, yoksay
+        const raw=payload.new||{};
+        const key=raw.key;
+        if(!key||!raw.value) return;
+        // Kendi yazdığımız satırı session ID ile tanı — JSON karşılaştırması güvenilmez (JSONB key sırası)
+        const writerSid = raw.value?._sid;
+        if(writerSid===_SESSION_ID) return;
+        const value = _supaUnwrap(raw.value);
+        if(!value) return;
         // Realtime'dan gelen güncellemeyi state'e yaz ama Supabase'e geri yazma
         skipWriteRef.current[key]=true;
         if(key==="venues")     setVenuesRaw(value);
