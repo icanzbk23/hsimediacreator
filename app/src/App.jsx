@@ -792,8 +792,10 @@ export default function App(){
   const setMudurNotu = v=>setMudurNotuRaw(v);
 
   // Supabase sync kontrol ref'leri
-  const supaReadyRef  = useRef(false);   // ilk yükleme bitti mi
-  const lastWriteRef  = useRef({});      // kendi yazdığımız değerleri takip et (realtime'da geri gelmesin)
+  const supaReadyRef       = useRef(false);   // ilk yükleme bitti mi
+  const lastWriteRef       = useRef({});      // kendi yazdığımız değerleri takip et (realtime'da geri gelmesin)
+  const roleRef            = useRef(null);    // closure'da güncel rolü okumak için
+  const notifiedEkipIdsRef = useRef(new Set()); // bildirim gönderilen ekip fikir id'leri
 
   // ── OTOMATİK KAYIT (localStorage + Supabase) ─────────────────────────────────
   useEffect(()=>{
@@ -831,7 +833,11 @@ export default function App(){
             const toAdd    = INITIAL_VENUES.filter(v=>!supaIds.has(v.id)&&!allDel.has(v.id));
             setVenuesRaw(toAdd.length?[...m.venues,...toAdd]:m.venues);
           }
-          if(m.schedule)          setScheduleRaw(m.schedule);
+          if(m.schedule){
+            setScheduleRaw(m.schedule);
+            // İlk yüklemede mevcut fikirleri "görüldü" olarak işaretle — açılışta bildirim gitmesin
+            Object.values(m.schedule).forEach(slots=>(slots||[]).forEach(slot=>(slot.ekipFikirleri||[]).forEach(f=>notifiedEkipIdsRef.current.add(f.id))));
+          }
           if(m.mudur_notu!=null)  setMudurNotuRaw(m.mudur_notu);
         }
       }catch(e){ console.error("Supabase yüklenemedi:",e); }
@@ -848,8 +854,35 @@ export default function App(){
         if(!key||!value) return;
         if(lastWriteRef.current[key]===JSON.stringify(value)) return; // kendi yazdığımız, yoksay
         if(key==="venues")     setVenuesRaw(value);
-        if(key==="schedule")   setScheduleRaw(value);
         if(key==="mudur_notu") setMudurNotuRaw(value);
+        if(key==="schedule"){
+          setScheduleRaw(value);
+          // Sadece admin rolündeyken bildirim gönder
+          if(roleRef.current==="admin"&&"Notification" in window&&Notification.permission==="granted"){
+            const newSched=value;
+            const yeniFikirler=[];
+            Object.entries(newSched).forEach(([day,slots])=>{
+              (slots||[]).forEach(slot=>{
+                (slot.ekipFikirleri||[]).forEach(f=>{
+                  if(!f.onaylandi&&!notifiedEkipIdsRef.current.has(f.id)){
+                    yeniFikirler.push({...f,day,venueId:slot.venueId});
+                    notifiedEkipIdsRef.current.add(f.id);
+                  }
+                });
+              });
+            });
+            if(yeniFikirler.length>0){
+              const isimler=yeniFikirler.map(f=>f.baslik).join(", ");
+              const n=new Notification("HSI Medya — Yeni Ekip Fikri",{
+                body:`Ekip onay bekliyor: ${isimler}`,
+                icon:"/hsi_logo.png",
+                badge:"/hsi_logo.png",
+                tag:"ekip-fikir",
+              });
+              n.onclick=()=>{ window.focus(); };
+            }
+          }
+        }
       })
       .subscribe();
     return ()=>{ _supa.removeChannel(ch); };
@@ -2202,7 +2235,14 @@ export default function App(){
   const _surveyName   = _surveyParams.get("venue")||"Mekan";
   if(_surveyVenue) return <SurveyPage venueName={decodeURIComponent(_surveyName)}/>;
 
-  if(!role) return <LoginScreen onLogin={r=>{setRole(r);setActiveTab(r==="mudur"?"mudur":"onay");}}/>;
+  if(!role) return <LoginScreen onLogin={r=>{
+    setRole(r);
+    roleRef.current=r;
+    setActiveTab(r==="mudur"?"mudur":"onay");
+    if(r==="admin"&&"Notification" in window&&Notification.permission==="default"){
+      Notification.requestPermission();
+    }
+  }}/>;
 
   const adminTabs=[{id:"onay",label:"Onay Takibi",icon:"calendar"},{id:"venues",label:"Mekanlar",icon:"camera"},{id:"anket",label:"Anket",icon:"phone"},{id:"share",label:"Paylaş",icon:"whatsapp"},{id:"icerik",label:"İçerik Kontrol",icon:"layers"},{id:"dashboard",label:"Dashboard",icon:"stock"}];
   const ekipTabs =[{id:"onay",label:"Onay Paneli",icon:"phone"}];
