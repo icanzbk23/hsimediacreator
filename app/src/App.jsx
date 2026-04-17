@@ -796,23 +796,38 @@ export default function App(){
   const lastWriteRef       = useRef({});      // kendi yazdığımız değerleri takip et (realtime'da geri gelmesin)
   const roleRef            = useRef(null);    // closure'da güncel rolü okumak için
   const notifiedEkipIdsRef = useRef(new Set()); // bildirim gönderilen ekip fikir id'leri
+  const skipWriteRef       = useRef({});      // realtime'dan gelen update'i Supabase'e geri yazma
+
+  // roleRef'i role state ile senkronize tut
+  useEffect(()=>{ roleRef.current=role; },[role]);
+
+  // Admin girişinde bildirim izni iste (sadece Electron desktop)
+  useEffect(()=>{
+    const isElectron=window.location.protocol==="file:";
+    if(role==="admin"&&isElectron&&"Notification" in window&&Notification.permission==="default"){
+      Notification.requestPermission();
+    }
+  },[role]);
 
   // ── OTOMATİK KAYIT (localStorage + Supabase) ─────────────────────────────────
   useEffect(()=>{
     try{ localStorage.setItem("hsi_venues", JSON.stringify(venues)); }catch{}
     if(!supaReadyRef.current) return;
+    if(skipWriteRef.current.venues){ skipWriteRef.current.venues=false; return; }
     lastWriteRef.current.venues=JSON.stringify(venues);
     _supaSet("venues", venues);
   },[venues]);
   useEffect(()=>{
     try{ localStorage.setItem("hsi_schedule", JSON.stringify(schedule)); }catch{}
     if(!supaReadyRef.current) return;
+    if(skipWriteRef.current.schedule){ skipWriteRef.current.schedule=false; return; }
     lastWriteRef.current.schedule=JSON.stringify(schedule);
     _supaSet("schedule", schedule);
   },[schedule]);
   useEffect(()=>{
     try{ localStorage.setItem("hsi_mudurNotu", JSON.stringify(mudurNotu)); }catch{}
     if(!supaReadyRef.current) return;
+    if(skipWriteRef.current.mudur_notu){ skipWriteRef.current.mudur_notu=false; return; }
     lastWriteRef.current.mudur_notu=JSON.stringify(mudurNotu);
     _supaSet("mudur_notu", mudurNotu);
   },[mudurNotu]);
@@ -853,33 +868,32 @@ export default function App(){
         const {key,value}=payload.new||{};
         if(!key||!value) return;
         if(lastWriteRef.current[key]===JSON.stringify(value)) return; // kendi yazdığımız, yoksay
+        // Realtime'dan gelen güncellemeyi state'e yaz ama Supabase'e geri yazma
+        skipWriteRef.current[key]=true;
         if(key==="venues")     setVenuesRaw(value);
         if(key==="mudur_notu") setMudurNotuRaw(value);
         if(key==="schedule"){
           setScheduleRaw(value);
-          // Sadece admin rolündeyken bildirim gönder
-          if(roleRef.current==="admin"&&"Notification" in window&&Notification.permission==="granted"){
-            const newSched=value;
+          // Bildirim: sadece Electron desktop + admin rolü
+          const isElectron=window.location.protocol==="file:";
+          if(isElectron&&roleRef.current==="admin"&&"Notification" in window&&Notification.permission==="granted"){
             const yeniFikirler=[];
-            Object.entries(newSched).forEach(([day,slots])=>{
+            Object.entries(value).forEach(([,slots])=>{
               (slots||[]).forEach(slot=>{
                 (slot.ekipFikirleri||[]).forEach(f=>{
                   if(!f.onaylandi&&!notifiedEkipIdsRef.current.has(f.id)){
-                    yeniFikirler.push({...f,day,venueId:slot.venueId});
+                    yeniFikirler.push(f);
                     notifiedEkipIdsRef.current.add(f.id);
                   }
                 });
               });
             });
             if(yeniFikirler.length>0){
-              const isimler=yeniFikirler.map(f=>f.baslik).join(", ");
               const n=new Notification("HSI Medya — Yeni Ekip Fikri",{
-                body:`Ekip onay bekliyor: ${isimler}`,
-                icon:"/hsi_logo.png",
-                badge:"/hsi_logo.png",
+                body:`Onay bekliyor: ${yeniFikirler.map(f=>f.baslik).join(", ")}`,
                 tag:"ekip-fikir",
               });
-              n.onclick=()=>{ window.focus(); };
+              n.onclick=()=>window.focus();
             }
           }
         }
@@ -2235,14 +2249,7 @@ export default function App(){
   const _surveyName   = _surveyParams.get("venue")||"Mekan";
   if(_surveyVenue) return <SurveyPage venueName={decodeURIComponent(_surveyName)}/>;
 
-  if(!role) return <LoginScreen onLogin={r=>{
-    setRole(r);
-    roleRef.current=r;
-    setActiveTab(r==="mudur"?"mudur":"onay");
-    if(r==="admin"&&"Notification" in window&&Notification.permission==="default"){
-      Notification.requestPermission();
-    }
-  }}/>;
+  if(!role) return <LoginScreen onLogin={r=>{setRole(r);setActiveTab(r==="mudur"?"mudur":"onay");}}/>;
 
   const adminTabs=[{id:"onay",label:"Onay Takibi",icon:"calendar"},{id:"venues",label:"Mekanlar",icon:"camera"},{id:"anket",label:"Anket",icon:"phone"},{id:"share",label:"Paylaş",icon:"whatsapp"},{id:"icerik",label:"İçerik Kontrol",icon:"layers"},{id:"dashboard",label:"Dashboard",icon:"stock"}];
   const ekipTabs =[{id:"onay",label:"Onay Paneli",icon:"phone"}];
