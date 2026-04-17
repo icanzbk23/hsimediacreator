@@ -1358,30 +1358,181 @@ export default function App(){
           </div>
         )}
 
-        {/* Mekan durumları özeti — sadece ekip görür */}
-        {role==="ekip"&&(
-          <div style={{background:"#0E0E1C",border:"1px solid #1A1A2E",borderRadius:12,padding:16,marginBottom:20}}>
-            <div style={{fontSize:12,fontWeight:700,color:"#555",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12}}>Bu Haftaki Mekan Durumları</div>
-            <div style={{display:"flex",flexDirection:"column",gap:6}}>
-              {Object.entries(schedule).flatMap(([day,slots])=>
-                slots.map(slot=>{
-                  const v=venues.find(vv=>vv.id===slot.venueId);if(!v)return null;
-                  const st=STATUS[slot.status]||STATUS.taslak;
+        {/* Takvim — sadece ekip görür */}
+        {role==="ekip"&&(()=>{
+          const today=new Date(); today.setHours(0,0,0,0);
+          const MONTHS=["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
+          const MONTH_NAMES_TR={"ocak":1,"şubat":2,"mart":3,"nisan":4,"mayıs":5,"haziran":6,"temmuz":7,"ağustos":8,"eylül":9,"ekim":10,"kasım":11,"aralık":12};
+
+          // ── Müdür notundan etkinlikleri çıkar ──────────────────────────────
+          const parseEvents=(note)=>{
+            if(!note) return [];
+            const events=[];
+            const lines=note.split(/\n/);
+            lines.forEach(line=>{
+              if(!line.trim()) return;
+              // "X yere gidilecek 24 nisan" → tek gün
+              // "Y mekana gidilecek 15-23 nisan" → tarih aralığı
+              // "Z 3 mayıs - 7 mayıs" → iki ay farklı aralık
+              const monthPat=Object.keys(MONTH_NAMES_TR).join("|");
+              // Aralık: "15-23 nisan" veya "15 nisan - 23 nisan" veya "3 mayıs - 7 mayıs"
+              const rangeMatch=line.match(new RegExp(`(\\d{1,2})\\s*[-–]\\s*(\\d{1,2})\\s+(${monthPat})(?:\\s+(\\d{4}))?`,"i"))
+                ||line.match(new RegExp(`(\\d{1,2})\\s+(${monthPat})(?:\\s+(\\d{4}))?\\s*[-–]\\s*(\\d{1,2})\\s+(${monthPat})(?:\\s+(\\d{4}))?`,"i"));
+              // Tek gün: "24 nisan" veya "nisan 24"
+              const singleMatch=line.match(new RegExp(`(\\d{1,2})\\s+(${monthPat})(?:\\s+(\\d{4}))?`,"i"))
+                ||line.match(new RegExp(`(${monthPat})\\s+(\\d{1,2})(?:\\s+(\\d{4}))?`,"i"));
+
+              // Etkinlik adı: satırın tarih dışındaki kısmı
+              const label=line.replace(/\d{1,2}\s*[-–]\s*\d{1,2}\s+\w+/gi,"").replace(/\d{1,2}\s+\w+/gi,"").replace(/[-–]/g,"").replace(/\s+/g," ").trim()||line.trim();
+              const yr=today.getFullYear();
+
+              if(rangeMatch){
+                let startD,endD;
+                // format 1: "15-23 nisan"
+                const m1=line.match(new RegExp(`(\\d{1,2})\\s*[-–]\\s*(\\d{1,2})\\s+(${monthPat})(?:\\s+(\\d{4}))?`,"i"));
+                // format 2: "3 mayıs - 7 haziran"
+                const m2=line.match(new RegExp(`(\\d{1,2})\\s+(${monthPat})(?:\\s+(\\d{4}))?\\s*[-–]\\s*(\\d{1,2})\\s+(${monthPat})(?:\\s+(\\d{4}))?`,"i"));
+                if(m1){
+                  const mon=MONTH_NAMES_TR[m1[3].toLowerCase()];
+                  startD=new Date(m1[4]?parseInt(m1[4]):yr,mon-1,parseInt(m1[1]));
+                  endD=new Date(m1[4]?parseInt(m1[4]):yr,mon-1,parseInt(m1[2]));
+                } else if(m2){
+                  const mon1=MONTH_NAMES_TR[m2[2].toLowerCase()];const mon2=MONTH_NAMES_TR[m2[5].toLowerCase()];
+                  startD=new Date(m2[3]?parseInt(m2[3]):yr,mon1-1,parseInt(m2[1]));
+                  endD=new Date(m2[6]?parseInt(m2[6]):yr,mon2-1,parseInt(m2[4]));
+                }
+                if(startD&&endD&&!isNaN(startD)){
+                  const cur=new Date(startD);
+                  while(cur<=endD){events.push({date:new Date(cur),label,range:true,startD,endD});cur.setDate(cur.getDate()+1);}
+                }
+              } else if(singleMatch){
+                let d,mon;
+                const sm1=line.match(new RegExp(`(\\d{1,2})\\s+(${monthPat})(?:\\s+(\\d{4}))?`,"i"));
+                const sm2=line.match(new RegExp(`(${monthPat})\\s+(\\d{1,2})(?:\\s+(\\d{4}))?`,"i"));
+                if(sm1){mon=MONTH_NAMES_TR[sm1[2].toLowerCase()];d=new Date(sm1[3]?parseInt(sm1[3]):yr,mon-1,parseInt(sm1[1]));}
+                else if(sm2){mon=MONTH_NAMES_TR[sm2[1].toLowerCase()];d=new Date(sm2[3]?parseInt(sm2[3]):yr,mon-1,parseInt(sm2[2]));}
+                if(d&&!isNaN(d)) events.push({date:d,label,range:false});
+              }
+            });
+            return events;
+          };
+
+          const events=parseEvents(mudurNotu);
+
+          // ── Takvim state ───────────────────────────────────────────────────
+          const [calYear,setCalYear]=useState(()=>today.getFullYear());
+          const [calMonth,setCalMonth]=useState(()=>today.getMonth());
+
+          const firstDay=new Date(calYear,calMonth,1);
+          const lastDay=new Date(calYear,calMonth+1,0);
+          // Pzt=0 ... Paz=6
+          let startOffset=firstDay.getDay()-1; if(startOffset<0) startOffset=6;
+          const totalCells=startOffset+lastDay.getDate();
+          const weeks=Math.ceil(totalCells/7);
+
+          const eventsForDay=(d)=>{
+            const dt=new Date(calYear,calMonth,d); dt.setHours(0,0,0,0);
+            return events.filter(e=>{const ed=new Date(e.date);ed.setHours(0,0,0,0);return ed.getTime()===dt.getTime();});
+          };
+
+          const isToday=(d)=>{const dt=new Date(calYear,calMonth,d);dt.setHours(0,0,0,0);return dt.getTime()===today.getTime();};
+          const isUrgent=(d)=>{
+            const dt=new Date(calYear,calMonth,d); dt.setHours(0,0,0,0);
+            const diff=(dt-today)/(1000*60*60*24);
+            return diff>=0&&diff<=3&&eventsForDay(d).length>0;
+          };
+
+          // Seçili gün için etkinlikleri göster
+          const [selectedDay,setSelectedDay]=useState(null);
+          const selectedEvents=selectedDay?eventsForDay(selectedDay):[];
+
+          return(
+            <div style={{background:"#0E0E1C",border:"1px solid #1A1A2E",borderRadius:16,padding:isMobile?14:20,marginBottom:20}}>
+              {/* Başlık + navigasyon */}
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                <button onClick={()=>{if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}else setCalMonth(m=>m-1);setSelectedDay(null);}}
+                  style={{background:"none",border:"1px solid #1A1A2E",borderRadius:8,color:"#888",cursor:"pointer",padding:"5px 10px",fontSize:16}}>‹</button>
+                <div style={{fontSize:isMobile?15:16,fontWeight:700,color:"#fff"}}>{MONTHS[calMonth]} {calYear}</div>
+                <button onClick={()=>{if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}else setCalMonth(m=>m+1);setSelectedDay(null);}}
+                  style={{background:"none",border:"1px solid #1A1A2E",borderRadius:8,color:"#888",cursor:"pointer",padding:"5px 10px",fontSize:16}}>›</button>
+              </div>
+
+              {/* Gün isimleri */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",marginBottom:4}}>
+                {["Pt","Sa","Ça","Pe","Cu","Ct","Pz"].map(d=>(
+                  <div key={d} style={{textAlign:"center",fontSize:10,fontWeight:700,color:"#444",padding:"4px 0"}}>{d}</div>
+                ))}
+              </div>
+
+              {/* Hücreler */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+                {Array.from({length:weeks*7}).map((_,i)=>{
+                  const dayNum=i-startOffset+1;
+                  const valid=dayNum>=1&&dayNum<=lastDay.getDate();
+                  const dayEvents=valid?eventsForDay(dayNum):[];
+                  const urgent=valid&&isUrgent(dayNum);
+                  const sel=selectedDay===dayNum;
+                  const todayCell=valid&&isToday(dayNum);
                   return(
-                    <div key={`${day}_${slot.venueId}`} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"#0A0A14",borderRadius:8,border:"1px solid #131326"}}>
-                      <div style={{width:8,height:8,borderRadius:"50%",background:v.color,flexShrink:0}}/>
-                      <div style={{fontSize:12,fontWeight:600,color:"#ccc",flex:1}}>{v.name}</div>
-                      <div style={{fontSize:10,color:"#444"}}>{day}</div>
-                      <div style={{fontSize:10,background:st.bg,color:st.color,border:`1px solid ${st.border}`,borderRadius:5,padding:"2px 7px",fontWeight:700}}>{st.icon} {st.label}</div>
-                      {slot.note&&<div style={{fontSize:10,color:"#FF9500",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📋 {slot.note}</div>}
+                    <div key={i} onClick={()=>{if(valid&&dayEvents.length) setSelectedDay(sel?null:dayNum);}}
+                      style={{minHeight:isMobile?38:44,borderRadius:8,padding:"4px 3px",position:"relative",
+                        background:sel?"#7B68EE22":todayCell?"#7B68EE11":"transparent",
+                        border:sel?"1px solid #7B68EE55":todayCell?"1px solid #7B68EE33":"1px solid transparent",
+                        cursor:valid&&dayEvents.length?"pointer":"default",
+                        transition:"all 0.15s"}}>
+                      {valid&&(
+                        <>
+                          <div style={{textAlign:"center",fontSize:isMobile?11:12,fontWeight:todayCell?800:400,
+                            color:todayCell?"#7B68EE":dayNum<today.getDate()&&calMonth===today.getMonth()&&calYear===today.getFullYear()?"#333":"#ccc",
+                            marginBottom:2}}>{dayNum}</div>
+                          {dayEvents.length>0&&(
+                            <div style={{display:"flex",flexDirection:"column",gap:1,paddingHorizontal:1}}>
+                              {dayEvents.slice(0,isMobile?1:2).map((ev,ei)=>(
+                                <div key={ei} style={{background:"#7B68EE33",borderRadius:3,fontSize:isMobile?8:9,color:"#B8AAFF",
+                                  padding:"1px 3px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.3}}>
+                                  {ev.label}
+                                </div>
+                              ))}
+                              {dayEvents.length>2&&<div style={{fontSize:8,color:"#555",textAlign:"center"}}>+{dayEvents.length-2}</div>}
+                            </div>
+                          )}
+                          {urgent&&(
+                            <div style={{position:"absolute",top:2,right:3,width:7,height:7,borderRadius:"50%",background:"#FF3B30",
+                              boxShadow:"0 0 4px #FF3B30"}}/>
+                          )}
+                        </>
+                      )}
                     </div>
                   );
-                })
-              ).filter(Boolean)}
-              {Object.values(schedule).flat().length===0&&<div style={{fontSize:12,color:"#444",textAlign:"center",padding:10}}>Program henüz oluşturulmadı</div>}
+                })}
+              </div>
+
+              {/* Seçili gün detayı */}
+              {selectedDay&&selectedEvents.length>0&&(
+                <div style={{marginTop:14,borderTop:"1px solid #1A1A2E",paddingTop:12}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"#7B68EE",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>
+                    {selectedDay} {MONTHS[calMonth]} {calYear}
+                    {isUrgent(selectedDay)&&<span style={{marginLeft:8,color:"#FF3B30",fontSize:11}}>🔴 Yaklaşıyor!</span>}
+                  </div>
+                  {selectedEvents.map((ev,i)=>(
+                    <div key={i} style={{background:"#0A0A14",border:"1px solid #7B68EE33",borderRadius:8,padding:"10px 12px",marginBottom:6}}>
+                      <div style={{fontSize:13,color:"#E8E8F0",fontWeight:600,lineHeight:1.5}}>{ev.label}</div>
+                      {ev.range&&<div style={{fontSize:10,color:"#7B68EE",marginTop:3}}>
+                        📅 {ev.startD.getDate()} {MONTHS[ev.startD.getMonth()]} – {ev.endD.getDate()} {MONTHS[ev.endD.getMonth()]}
+                      </div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {events.length===0&&(
+                <div style={{textAlign:"center",fontSize:12,color:"#333",marginTop:8,fontStyle:"italic"}}>
+                  Müdür notunda tarih bulunamadı
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Progress */}
         <div style={{background:"#0E0E1C",border:"1px solid #1A1A2E",borderRadius:12,padding:16,marginBottom:20}}>
