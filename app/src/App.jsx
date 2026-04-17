@@ -522,7 +522,7 @@ const StatusBadge = ({status})=>{
 const ROLES = {
   admin: { label:"Admin",         color:"#7B68EE", icon:"lock",  desc:"Tam yetki" },
   ekip:  { label:"Ekip",          color:"#34C759", icon:"user",  desc:"Onay paneli" },
-  mudur: { label:"Müdür / Patron",color:"#F4A623", icon:"eye",   desc:"Salt okunur" },
+  mudur: { label:"Yönetici",color:"#F4A623", icon:"eye",   desc:"Salt okunur" },
 };
 
 // ── LOGIN SCREEN ──────────────────────────────────────────────────────────────
@@ -1399,7 +1399,7 @@ export default function App(){
           <div style={{background:"#F4A62312",border:"1px solid #F4A62344",borderRadius:12,padding:"14px 18px",marginBottom:20,display:"flex",gap:12,alignItems:"flex-start"}}>
             <div style={{fontSize:20,flexShrink:0}}>📝</div>
             <div>
-              <div style={{fontSize:11,fontWeight:700,color:"#F4A623",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:5}}>Müdür / Patron Notu</div>
+              <div style={{fontSize:11,fontWeight:700,color:"#F4A623",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:5}}>Yönetici Notu</div>
               <div style={{fontSize:13,color:"#E8E8F0",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{mudurNotu}</div>
             </div>
           </div>
@@ -1586,7 +1586,7 @@ export default function App(){
 
               {events.length===0&&(
                 <div style={{textAlign:"center",fontSize:12,color:"#333",marginTop:8,fontStyle:"italic"}}>
-                  Müdür notunda tarih bulunamadı
+                  Yönetici notunda tarih bulunamadı
                 </div>
               )}
             </div>
