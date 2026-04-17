@@ -1465,7 +1465,7 @@ export default function App(){
               </div>
 
               {/* Hücreler */}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:isMobile?1:2}}>
                 {Array.from({length:weeks*7}).map((_,i)=>{
                   const dayNum=i-startOffset+1;
                   const valid=dayNum>=1&&dayNum<=lastDay.getDate();
@@ -1475,29 +1475,41 @@ export default function App(){
                   const todayCell=valid&&isToday(dayNum);
                   return(
                     <div key={i} onClick={()=>{if(valid&&dayEvents.length) setSelectedDay(sel?null:dayNum);}}
-                      style={{minHeight:isMobile?38:44,borderRadius:8,padding:"4px 3px",position:"relative",
+                      style={{minHeight:isMobile?36:44,borderRadius:isMobile?6:8,
+                        padding:isMobile?"3px 1px":"4px 3px",
+                        overflow:"hidden",
+                        position:"relative",
                         background:sel?"#7B68EE22":todayCell?"#7B68EE11":"transparent",
                         border:sel?"1px solid #7B68EE55":todayCell?"1px solid #7B68EE33":"1px solid transparent",
                         cursor:valid&&dayEvents.length?"pointer":"default",
                         transition:"all 0.15s"}}>
                       {valid&&(
                         <>
-                          <div style={{textAlign:"center",fontSize:isMobile?11:12,fontWeight:todayCell?800:400,
+                          <div style={{textAlign:"center",fontSize:isMobile?10:12,fontWeight:todayCell?800:400,
                             color:todayCell?"#7B68EE":dayNum<today.getDate()&&calMonth===today.getMonth()&&calYear===today.getFullYear()?"#333":"#ccc",
-                            marginBottom:2}}>{dayNum}</div>
+                            marginBottom:isMobile?1:2,lineHeight:1}}>{dayNum}</div>
                           {dayEvents.length>0&&(
-                            <div style={{display:"flex",flexDirection:"column",gap:1,paddingHorizontal:1}}>
-                              {dayEvents.slice(0,isMobile?1:2).map((ev,ei)=>(
-                                <div key={ei} style={{background:"#7B68EE33",borderRadius:3,fontSize:isMobile?8:9,color:"#B8AAFF",
-                                  padding:"1px 3px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.3}}>
-                                  {ev.label}
-                                </div>
-                              ))}
-                              {dayEvents.length>2&&<div style={{fontSize:8,color:"#555",textAlign:"center"}}>+{dayEvents.length-2}</div>}
-                            </div>
+                            isMobile?(
+                              /* Mobilde sadece renkli nokta — etiket detayda görünür */
+                              <div style={{display:"flex",justifyContent:"center",gap:2,flexWrap:"wrap"}}>
+                                {dayEvents.slice(0,3).map((_,ei)=>(
+                                  <div key={ei} style={{width:5,height:5,borderRadius:"50%",background:"#7B68EE",flexShrink:0}}/>
+                                ))}
+                              </div>
+                            ):(
+                              <div style={{display:"flex",flexDirection:"column",gap:1}}>
+                                {dayEvents.slice(0,2).map((ev,ei)=>(
+                                  <div key={ei} style={{background:"#7B68EE33",borderRadius:3,fontSize:9,color:"#B8AAFF",
+                                    padding:"1px 3px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.3}}>
+                                    {ev.label}
+                                  </div>
+                                ))}
+                                {dayEvents.length>2&&<div style={{fontSize:8,color:"#555",textAlign:"center"}}>+{dayEvents.length-2}</div>}
+                              </div>
+                            )
                           )}
                           {urgent&&(
-                            <div style={{position:"absolute",top:2,right:3,width:7,height:7,borderRadius:"50%",background:"#FF3B30",
+                            <div style={{position:"absolute",top:2,right:2,width:6,height:6,borderRadius:"50%",background:"#FF3B30",
                               boxShadow:"0 0 4px #FF3B30"}}/>
                           )}
                         </>
