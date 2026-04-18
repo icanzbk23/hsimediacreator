@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import hsiLogo from "./hsi_logo.png";
 import { createClient } from "@supabase/supabase-js";
 import {
