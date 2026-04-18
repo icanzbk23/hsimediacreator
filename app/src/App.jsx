@@ -807,9 +807,12 @@ export default function App(){
   const notifiedEkipIdsRef = useRef(new Set()); // bildirim gönderilen ekip fikir id'leri
   const skipWriteRef       = useRef({});      // realtime'dan gelen update'i Supabase'e geri yazma
   const lastLocalWriteRef  = useRef(0);       // son yerel yazma zamanı (ms) — polling race condition'ı önler
+  const prevScheduleRef    = useRef(null);    // son bilinen schedule — diff için
+  const venuesRef          = useRef([]);      // güncel venues listesi — callback closure'larında isim lookup
 
-  // roleRef'i role state ile senkronize tut
+  // roleRef ve venuesRef'i state ile senkronize tut
   useEffect(()=>{ roleRef.current=role; },[role]);
+  useEffect(()=>{ venuesRef.current=venues; },[venues]);
 
   // Native bildirim gönder — Electron'da main process üzerinden, web'de tarayıcı Notification
   const sendNotify = useCallback((title, body)=>{
@@ -820,6 +823,43 @@ export default function App(){
       n.onclick=()=>window.focus();
     }
   },[]);
+
+  // İki schedule arasındaki farkları bul, admin'e bildirim gönder
+  const diffAndNotify = useCallback((oldSched, newSched)=>{
+    if(roleRef.current!=="admin"||!oldSched||!newSched) return;
+    const STATUS_LABELS={taslak:"Taslak",aranıyor:"Aranıyor",onaylandi:"Onaylandı",ertelendi:"Ertelendi",kesinlesti:"Kesinleşti"};
+    const changes=[];
+    Object.entries(newSched).forEach(([day,slots])=>{
+      (slots||[]).forEach(newSlot=>{
+        const vName=venuesRef.current.find(v=>v.id===newSlot.venueId)?.name||`#${newSlot.venueId}`;
+        const oldSlot=(oldSched[day]||[]).find(s=>s.venueId===newSlot.venueId);
+        // Yeni ekip fikirleri
+        (newSlot.ekipFikirleri||[]).forEach(f=>{
+          if(!f.onaylandi&&!notifiedEkipIdsRef.current.has(f.id)){
+            notifiedEkipIdsRef.current.add(f.id);
+            changes.push(`${vName} (${day}): Yeni fikir — "${f.baslik}"`);
+          }
+        });
+        if(!oldSlot) return;
+        // Durum değişikliği
+        if(oldSlot.status!==newSlot.status){
+          changes.push(`${vName} (${day}): ${STATUS_LABELS[newSlot.status]||newSlot.status}`);
+        }
+        // Ekip notu
+        if(newSlot.ekipNotu&&newSlot.ekipNotu!==oldSlot.ekipNotu){
+          changes.push(`${vName} (${day}): Ekip notu — "${newSlot.ekipNotu.slice(0,50)}"`);
+        }
+        // İçerik gönderildi
+        if(newSlot.icerikGonderildi&&!oldSlot.icerikGonderildi){
+          changes.push(`${vName} (${day}): Icerik gonderildi`);
+        }
+      });
+    });
+    if(changes.length>0){
+      const title=changes.length===1?"HSI Medya — Degisiklik":`HSI Medya — ${changes.length} degisiklik`;
+      sendNotify(title,changes.join("\n"));
+    }
+  },[diffAndNotify]);
 
   // Supabase'den veriyi çek ve state'e uygula (polling + visibility refresh için)
   const refreshFromSupa = useCallback(async()=>{
@@ -833,17 +873,9 @@ export default function App(){
         if(m.venues?.length){ skipWriteRef.current.venues=true; setVenuesRaw(m.venues); }
         if(m.schedule){
           skipWriteRef.current.schedule=true;
+          diffAndNotify(prevScheduleRef.current, m.schedule);
+          prevScheduleRef.current=m.schedule;
           setScheduleRaw(m.schedule);
-          // Polling'de de bildirim gönder (Realtime kopuksa yedek)
-          if(roleRef.current==="admin"){
-            const yeni=[];
-            Object.values(m.schedule).forEach(slots=>(slots||[]).forEach(slot=>(slot.ekipFikirleri||[]).forEach(f=>{
-              if(!f.onaylandi&&!notifiedEkipIdsRef.current.has(f.id)){
-                yeni.push(f); notifiedEkipIdsRef.current.add(f.id);
-              }
-            })));
-            if(yeni.length>0) sendNotify("HSI Medya — Yeni Ekip Fikri",`Onay bekliyor: ${yeni.map(f=>f.baslik).join(", ")}`);
-          }
         }
         if(m.mudur_notu!=null){ skipWriteRef.current.mudur_notu=true; setMudurNotuRaw(m.mudur_notu); }
       }
@@ -883,6 +915,7 @@ export default function App(){
     if(!supaReadyRef.current) return;
     if(skipWriteRef.current.schedule){ skipWriteRef.current.schedule=false; return; }
     lastLocalWriteRef.current=Date.now();
+    prevScheduleRef.current=schedule; // kendi değişikliğimizi kaydet — diff'te bildirim gönderme
     _supaSet("schedule", schedule);
   },[schedule]);
   useEffect(()=>{
@@ -915,8 +948,9 @@ export default function App(){
             // skipWriteRef: ilk yükleme Supabase'e geri yazmasın
             skipWriteRef.current.schedule=true;
             setScheduleRaw(m.schedule);
-            // İlk yüklemede mevcut fikirleri "görüldü" olarak işaretle — açılışta bildirim gitmesin
+            // İlk yüklemede mevcut her şeyi "görüldü" say — açılışta bildirim gitmesin
             Object.values(m.schedule).forEach(slots=>(slots||[]).forEach(slot=>(slot.ekipFikirleri||[]).forEach(f=>notifiedEkipIdsRef.current.add(f.id))));
+            prevScheduleRef.current=m.schedule;
           }
           if(m.mudur_notu!=null){
             skipWriteRef.current.mudur_notu=true;
@@ -947,28 +981,14 @@ export default function App(){
         if(key==="venues")     setVenuesRaw(value);
         if(key==="mudur_notu") setMudurNotuRaw(value);
         if(key==="schedule"){
+          diffAndNotify(prevScheduleRef.current, value);
+          prevScheduleRef.current=value;
           setScheduleRaw(value);
-          if(roleRef.current==="admin"){
-            const yeniFikirler=[];
-            Object.entries(value).forEach(([,slots])=>{
-              (slots||[]).forEach(slot=>{
-                (slot.ekipFikirleri||[]).forEach(f=>{
-                  if(!f.onaylandi&&!notifiedEkipIdsRef.current.has(f.id)){
-                    yeniFikirler.push(f);
-                    notifiedEkipIdsRef.current.add(f.id);
-                  }
-                });
-              });
-            });
-            if(yeniFikirler.length>0){
-              sendNotify("HSI Medya — Yeni Ekip Fikri",`Onay bekliyor: ${yeniFikirler.map(f=>f.baslik).join(", ")}`);
-            }
-          }
         }
       })
       .subscribe();
     return ()=>{ _supa.removeChannel(ch); };
-  },[sendNotify]);
+  },[diffAndNotify]);
 
   // Polling: Realtime kopsa bile 30s'de bir Supabase'den çek
   useEffect(()=>{
