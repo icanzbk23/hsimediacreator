@@ -61,7 +61,7 @@ Endpoints:
 
 ## Architecture
 
-The entire application lives in a **single file**: `app/src/App.jsx` (~2150 lines). There is no routing library — views are controlled by `activeTab` state and the user's `role`.
+The entire application lives in a **single file**: `app/src/App.jsx` (~2520 lines). There is no routing library — views are controlled by `activeTab` state and the user's `role`.
 
 ### Static Assets
 - `app/src/hsi_logo.png` — imported as an ES module (`import hsiLogo from "./hsi_logo.png"`) and used in `LoginScreen` as the logo above "HSI Medya". Also used as the Electron `.app` icon (`electron/icon.icns`, generated from `hsi_logo.png` via `sips` + `iconutil`).
@@ -112,7 +112,7 @@ On init, venues state merges saved `hsi_venues` with `INITIAL_VENUES`: any venue
 - **Apify API** (`VITE_APIFY_API_KEY`): two actors — `apify~instagram-reel-scraper` (fetches up to 20 reels per account handle via `fetchInstagramReels`) and `apify~instagram-hashtag-scraper` (fetches viral reels by category hashtags via `fetchViralByCategory`). Both poll until `SUCCEEDED`.
 - **Supabase** (`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`): two purposes:
   1. Reads `venues?select=name,stock` on load to merge stock counts into local venue state (write-back via `stok_say.py` only).
-  2. **Cross-device real-time sync** via `app_state` table (key-value, keys: `"venues"`, `"schedule"`, `"mudur_notu"`). `_supaSet(key, value)` upserts; a Supabase Realtime `postgres_changes` subscription propagates changes to all connected clients. `supaReadyRef` prevents writing during initial load; `lastWriteRef` suppresses echo from the app's own writes. If `app_state` table is missing, sync silently falls back to localStorage-only.
+  2. **Cross-device real-time sync** via `app_state` table (key-value, keys: `"venues"`, `"schedule"`, `"mudur_notu"`). `_supaSet(key, value)` wraps each write as `{ _sid: _SESSION_ID, _d: value }` (module-level random ID per session). A Supabase Realtime `postgres_changes` subscription receives all changes; the handler compares `payload.new.value._sid === _SESSION_ID` to skip own writes — more reliable than JSON string comparison since JSONB may reorder keys. `_supaUnwrap(v)` unwraps the `_d` payload (backwards-compatible with old raw format). `skipWriteRef` flags prevent auto-save `useEffect`s from writing back to Supabase immediately after the initial load. If `app_state` table is missing, sync silently falls back to localStorage-only.
 
   Required SQL to create `app_state` (run once in Supabase SQL editor):
   ```sql
@@ -155,5 +155,14 @@ Ideas stored in `venue.ideas` (AI or Apify-derived) or `slot.ekipFikirleri` (tea
 - If it existed in a user's localStorage before removal, the `hsi_deleted_ids` key ensures it won't reappear — the delete button in VenuesPanel writes the venue `id` there automatically
 
 ### Deployment
-- **Vercel**: `vercel --prod --yes` from repo root. Config in `vercel.json`: build command `cd app && npm install && npm run build`, output dir `app/dist`.
-- **Electron desktop app**: `npm run package` from repo root (builds Vite first, then packages with electron-forge). Sign the `.app` in `/tmp` to avoid macOS Finder xattr interference: `find "$TMP" -exec xattr -c {} \; && codesign --force --deep --sign - "$TMP"`, then move to Desktop. Use `npm run package` not `npm run make` (DMG maker requires native node-gyp bindings).
+- **Vercel**: push to `main` branch — Vercel auto-deploys via GitHub. Direct CLI (`vercel --prod --yes`) also works but hangs if `out/` directory exists with a locked `.app` bundle inside. `.vercelignore` excludes `out/` and `node_modules/`.
+- **Electron desktop app (full repackage)**: `npm run package` from repo root (builds Vite first, then packages with electron-forge). Sign the `.app` in `/tmp` to avoid macOS Finder xattr interference: `find "$TMP" -exec xattr -c {} \; && codesign --force --deep --sign - "$TMP"`, then move to Desktop. Use `npm run package` not `npm run make` (DMG maker requires native node-gyp bindings).
+- **Electron desktop app (quick update — code changes only)**: Skip repackaging entirely. Build Vite, then copy `app/dist/` directly into the existing `.app` bundle:
+  ```bash
+  cd app && npm run build
+  DEST="/Users/ibrahimcanzeybek/Desktop/HSI Medya.app/Contents/Resources/app/app/dist"
+  rm -rf "$DEST" && cp -R dist "$DEST"
+  ```
+  Then quit and reopen the desktop app. This is much faster than full repackage and works for any JS/CSS/asset change. Only repackage when `electron/main.js`, `package.json`, or native dependencies change.
+
+- **`out/` directory lock**: After a failed `npm run package`, the `out/HSI Medya-darwin-arm64/` folder may be held open by macOS `language_` service (PID visible via `lsof | grep "medya_content_planner/out"`). Kill that PID before retrying deletion or packaging.

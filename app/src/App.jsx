@@ -793,6 +793,7 @@ export default function App(){
   const [toast,setToast]                 = useState(null);
   const [mudurNotu,setMudurNotuRaw]      = useState(()=>ls("hsi_mudurNotu",""));
   const [isMobile,setIsMobile]           = useState(()=>window.innerWidth<700);
+  const [supaOnline,setSupaOnline]       = useState(!!_supa);
 
   const setVenues    = v=>setVenuesRaw(v);
   const setSchedule  = v=>setScheduleRaw(v);
@@ -803,9 +804,27 @@ export default function App(){
   const roleRef            = useRef(null);    // closure'da güncel rolü okumak için
   const notifiedEkipIdsRef = useRef(new Set()); // bildirim gönderilen ekip fikir id'leri
   const skipWriteRef       = useRef({});      // realtime'dan gelen update'i Supabase'e geri yazma
+  const lastLocalWriteRef  = useRef(0);       // son yerel yazma zamanı (ms) — polling race condition'ı önler
 
   // roleRef'i role state ile senkronize tut
   useEffect(()=>{ roleRef.current=role; },[role]);
+
+  // Supabase'den veriyi çek ve state'e uygula (polling + visibility refresh için)
+  const refreshFromSupa = useCallback(async()=>{
+    if(!_supa) return;
+    // Son yerel yazmadan 10s geçmediyse atla — race condition önlemi
+    if(Date.now()-lastLocalWriteRef.current<10000) return;
+    try{
+      const {data}=await _supa.from("app_state").select("key,value");
+      if(data?.length){
+        const m=Object.fromEntries(data.map(r=>[r.key,_supaUnwrap(r.value)]));
+        if(m.venues?.length){ skipWriteRef.current.venues=true; setVenuesRaw(m.venues); }
+        if(m.schedule){ skipWriteRef.current.schedule=true; setScheduleRaw(m.schedule); }
+        if(m.mudur_notu!=null){ skipWriteRef.current.mudur_notu=true; setMudurNotuRaw(m.mudur_notu); }
+      }
+      setSupaOnline(true);
+    }catch{ setSupaOnline(false); }
+  },[]);
 
   // Admin girişinde bildirim izni iste (sadece Electron desktop)
   useEffect(()=>{
@@ -832,18 +851,21 @@ export default function App(){
     try{ localStorage.setItem("hsi_venues", JSON.stringify(venues)); }catch{}
     if(!supaReadyRef.current) return;
     if(skipWriteRef.current.venues){ skipWriteRef.current.venues=false; return; }
+    lastLocalWriteRef.current=Date.now();
     _supaSet("venues", venues);
   },[venues]);
   useEffect(()=>{
     try{ localStorage.setItem("hsi_schedule", JSON.stringify(schedule)); }catch{}
     if(!supaReadyRef.current) return;
     if(skipWriteRef.current.schedule){ skipWriteRef.current.schedule=false; return; }
+    lastLocalWriteRef.current=Date.now();
     _supaSet("schedule", schedule);
   },[schedule]);
   useEffect(()=>{
     try{ localStorage.setItem("hsi_mudurNotu", JSON.stringify(mudurNotu)); }catch{}
     if(!supaReadyRef.current) return;
     if(skipWriteRef.current.mudur_notu){ skipWriteRef.current.mudur_notu=false; return; }
+    lastLocalWriteRef.current=Date.now();
     _supaSet("mudur_notu", mudurNotu);
   },[mudurNotu]);
 
@@ -877,7 +899,8 @@ export default function App(){
             setMudurNotuRaw(m.mudur_notu);
           }
         }
-      }catch(e){ console.error("Supabase yüklenemedi:",e); }
+        setSupaOnline(true);
+      }catch(e){ console.error("Supabase yüklenemedi:",e); setSupaOnline(false); }
       supaReadyRef.current=true;
     })();
   },[]);
@@ -928,6 +951,22 @@ export default function App(){
       .subscribe();
     return ()=>{ _supa.removeChannel(ch); };
   },[]);
+
+  // Polling: Realtime kopsa bile 30s'de bir Supabase'den çek
+  useEffect(()=>{
+    if(!_supa) return;
+    const id=setInterval(refreshFromSupa,30000);
+    return ()=>clearInterval(id);
+  },[refreshFromSupa]);
+
+  // Tab görünür olunca yenile (kullanıcı başka sekmeden döndüğünde)
+  useEffect(()=>{
+    if(!_supa) return;
+    const onVis=()=>{ if(document.visibilityState==="visible") refreshFromSupa(); };
+    document.addEventListener("visibilitychange",onVis);
+    return ()=>document.removeEventListener("visibilitychange",onVis);
+  },[refreshFromSupa]);
+
   const weekDates = getWeekDates();
 
   useEffect(()=>{
@@ -2338,20 +2377,33 @@ export default function App(){
             {lowStockVenues.map(v=><div key={v.id} style={{fontSize:11,color:"#FF9500",opacity:0.7,marginBottom:1}}>• {v.name}: {v.stock}</div>)}
           </div>
         )}
-        {role==="admin"&&_supa&&(
-          <div style={{padding:"8px 20px 0"}}>
+        {_supa&&(
+          <div style={{padding:"8px 20px 0",display:"flex",flexDirection:"column",gap:5}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,fontSize:10,color:supaOnline?"#5EEAD4":"#666",paddingLeft:2}}>
+              <div style={{width:6,height:6,borderRadius:"50%",background:supaOnline?"#5EEAD4":"#555",flexShrink:0,boxShadow:supaOnline?"0 0 4px #5EEAD4":""}}/>
+              {supaOnline?"Canlı senkron":"Bağlantı yok"}
+            </div>
             <button onClick={async()=>{
-              try{
-                await Promise.all([
-                  _supaSet("venues",venues),
-                  _supaSet("schedule",schedule),
-                  _supaSet("mudur_notu",mudurNotu),
-                ]);
-                showToast("Tüm cihazlara senkronize edildi ✓");
-              }catch(e){showToast("Senkronizasyon hatası","error");}
-            }} style={{...s.btn("ghost"),width:"100%",justifyContent:"center",fontSize:11,gap:5,color:"#5EEAD4",borderColor:"#5EEAD422"}}>
-              <RefreshCw size={11}/> Bu Veriyi Yayınla
+              lastLocalWriteRef.current=0;
+              await refreshFromSupa();
+              showToast("Yenilendi ✓");
+            }} style={{...s.btn("ghost"),width:"100%",justifyContent:"center",fontSize:11,gap:5}}>
+              <RefreshCw size={11}/> Yenile
             </button>
+            {role==="admin"&&(
+              <button onClick={async()=>{
+                try{
+                  await Promise.all([
+                    _supaSet("venues",venues),
+                    _supaSet("schedule",schedule),
+                    _supaSet("mudur_notu",mudurNotu),
+                  ]);
+                  showToast("Tüm cihazlara senkronize edildi ✓");
+                }catch(e){showToast("Senkronizasyon hatası","error");}
+              }} style={{...s.btn("ghost"),width:"100%",justifyContent:"center",fontSize:11,gap:5,color:"#5EEAD4",borderColor:"#5EEAD422"}}>
+                <RefreshCw size={11}/> Bu Veriyi Yayınla
+              </button>
+            )}
           </div>
         )}
         <div style={{padding:"12px 20px",borderTop:"1px solid #16162A",marginTop:8}}>
@@ -2454,7 +2506,7 @@ export default function App(){
                       {!venue.venueAnalysis&&!venue.instagramData&&<span style={{fontSize:10,background:"#131326",color:"#444",borderRadius:10,padding:"2px 7px",fontWeight:700}}>Video Yükle</span>}
                     </div>
                     <button onClick={e=>{e.stopPropagation();setEditVenue(venue);}} style={{...s.btn("ghost"),padding:"3px 8px",fontSize:10,flexShrink:0}}><Icon name="edit" size={11}/></button>
-                    <button onClick={e=>{e.stopPropagation();if(window.confirm(`"${venue.name}" silinsin mi?`)){const prev=ls("hsi_deleted_ids",[]);const newDel=[...new Set([...prev,venue.id])];try{localStorage.setItem("hsi_deleted_ids",JSON.stringify(newDel))}catch{}lastWriteRef.current.deleted_venue_ids=JSON.stringify(newDel);_supaSet("deleted_venue_ids",newDel);setVenues(p=>p.filter(v=>v.id!==venue.id));showToast(`${venue.name} silindi`,"error");}}} style={{...s.btn("danger"),padding:"3px 8px",fontSize:10,flexShrink:0}}><Icon name="trash" size={11}/></button>
+                    <button onClick={e=>{e.stopPropagation();if(window.confirm(`"${venue.name}" silinsin mi?`)){const prev=ls("hsi_deleted_ids",[]);const newDel=[...new Set([...prev,venue.id])];try{localStorage.setItem("hsi_deleted_ids",JSON.stringify(newDel))}catch{}_supaSet("deleted_venue_ids",newDel);setVenues(p=>p.filter(v=>v.id!==venue.id));showToast(`${venue.name} silindi`,"error");}}} style={{...s.btn("danger"),padding:"3px 8px",fontSize:10,flexShrink:0}}><Icon name="trash" size={11}/></button>
                   </div>
                 </div>
               ))}
