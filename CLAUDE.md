@@ -155,7 +155,7 @@ Ideas stored in `venue.ideas` (AI or Apify-derived) or `slot.ekipFikirleri` (tea
 - If it existed in a user's localStorage before removal, the `hsi_deleted_ids` key ensures it won't reappear — the delete button in VenuesPanel writes the venue `id` there automatically
 
 ### Deployment
-- **Vercel**: push to `main` branch — Vercel auto-deploys via GitHub. Direct CLI (`vercel --prod --yes`) also works but hangs if `out/` directory exists with a locked `.app` bundle inside. `.vercelignore` excludes `out/` and `node_modules/`.
+- **Vercel**: canonical URL is **https://hsimedyacreator.vercel.app/** (project: `hsimedyacreator`). Deploy via CLI: `npx vercel --prod --yes` from repo root. Do NOT deploy to any other Vercel project — `hsimediacreator` and `medya_content_planner` have been permanently deleted. `.vercelignore` excludes `out/` and `node_modules/`.
 - **Electron desktop app (full repackage)**: `npm run package` from repo root (builds Vite first, then packages with electron-forge). Sign the `.app` in `/tmp` to avoid macOS Finder xattr interference: `find "$TMP" -exec xattr -c {} \; && codesign --force --deep --sign - "$TMP"`, then move to Desktop. Use `npm run package` not `npm run make` (DMG maker requires native node-gyp bindings).
 - **Electron desktop app (quick update — code changes only)**: The canonical app lives at `/Applications/HSI Medya.app` — NEVER create a new `.app` on the Desktop. Build Vite, then copy `app/dist/` directly into the Applications bundle:
   ```bash
