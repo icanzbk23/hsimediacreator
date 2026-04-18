@@ -859,7 +859,7 @@ export default function App(){
       const title=changes.length===1?"HSI Medya — Degisiklik":`HSI Medya — ${changes.length} degisiklik`;
       sendNotify(title,changes.join("\n"));
     }
-  },[diffAndNotify]);
+  },[sendNotify]);
 
   // Supabase'den veriyi çek ve state'e uygula (polling + visibility refresh için)
   const refreshFromSupa = useCallback(async()=>{
@@ -881,7 +881,7 @@ export default function App(){
       }
       setSupaOnline(true);
     }catch{ setSupaOnline(false); }
-  },[sendNotify]);
+  },[diffAndNotify]);
 
   // Admin girişinde bildirim izni iste (sadece Electron desktop)
   useEffect(()=>{
