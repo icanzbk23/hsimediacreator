@@ -157,10 +157,10 @@ Ideas stored in `venue.ideas` (AI or Apify-derived) or `slot.ekipFikirleri` (tea
 ### Deployment
 - **Vercel**: push to `main` branch — Vercel auto-deploys via GitHub. Direct CLI (`vercel --prod --yes`) also works but hangs if `out/` directory exists with a locked `.app` bundle inside. `.vercelignore` excludes `out/` and `node_modules/`.
 - **Electron desktop app (full repackage)**: `npm run package` from repo root (builds Vite first, then packages with electron-forge). Sign the `.app` in `/tmp` to avoid macOS Finder xattr interference: `find "$TMP" -exec xattr -c {} \; && codesign --force --deep --sign - "$TMP"`, then move to Desktop. Use `npm run package` not `npm run make` (DMG maker requires native node-gyp bindings).
-- **Electron desktop app (quick update — code changes only)**: Skip repackaging entirely. Build Vite, then copy `app/dist/` directly into the existing `.app` bundle:
+- **Electron desktop app (quick update — code changes only)**: The canonical app lives at `/Applications/HSI Medya.app` — NEVER create a new `.app` on the Desktop. Build Vite, then copy `app/dist/` directly into the Applications bundle:
   ```bash
   cd app && npm run build
-  DEST="/Users/ibrahimcanzeybek/Desktop/HSI Medya.app/Contents/Resources/app/app/dist"
+  DEST="/Applications/HSI Medya.app/Contents/Resources/app/app/dist"
   rm -rf "$DEST" && cp -R dist "$DEST"
   ```
   Then quit and reopen the desktop app. This is much faster than full repackage and works for any JS/CSS/asset change. Only repackage when `electron/main.js`, `package.json`, or native dependencies change.
