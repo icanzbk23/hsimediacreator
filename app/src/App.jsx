@@ -771,6 +771,40 @@ function SurveyPage({ venueName }) {
   );
 }
 
+// ── MÜDÜR NOT PANELİ — App dışında tanımlı, her render'da remount olmaz ─────────
+function MudurNotPanel({mudurNotu,setMudurNotu,showToast,s}){
+  const [draft,setDraft]=useState(mudurNotu);
+  const [saved,setSaved]=useState(false);
+  // Dış senkron (Supabase) mudurNotu'yu güncellerse draft'ı da güncelle
+  // — sadece admin'in yazmadığı (unsaved) durumda override yap
+  useEffect(()=>{
+    setDraft(prev=>prev===mudurNotu||prev.trim()===""?mudurNotu:prev);
+  },[mudurNotu]);
+  const save=()=>{setMudurNotu(draft);setSaved(true);showToast("Not ekibe iletildi!");setTimeout(()=>setSaved(false),2500);};
+  return(
+    <div style={{background:"#0E0E1C",border:"1px solid #F4A62333",borderRadius:12,padding:20}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+        <div style={{width:32,height:32,borderRadius:9,background:"#F4A62322",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>📝</div>
+        <div>
+          <div style={{fontSize:14,fontWeight:700,color:"#fff"}}>Ekibe Not</div>
+          <div style={{fontSize:11,color:"#555"}}>Yazdığın not Ekip panelinde görünür</div>
+        </div>
+        {mudurNotu&&<div style={{marginLeft:"auto",fontSize:10,background:"#34C75918",color:"#34C759",border:"1px solid #34C75933",borderRadius:6,padding:"2px 8px",fontWeight:700}}>✅ Aktif not var</div>}
+      </div>
+      <textarea
+        value={draft} onChange={e=>setDraft(e.target.value)}
+        placeholder="Ekibe iletmek istediğin talimat, uyarı veya bilgi..."
+        rows={4}
+        style={{width:"100%",background:"#0A0A14",border:"1px solid #1E1E30",borderRadius:10,padding:"12px 14px",color:"#fff",fontSize:13,fontFamily:"inherit",resize:"vertical",outline:"none",lineHeight:1.6,marginBottom:10}}
+      />
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <button onClick={save} disabled={!draft.trim()} style={{...s.btn("warn"),padding:"8px 16px"}}>{saved?"✅ Gönderildi":"📤 Ekibe Gönder"}</button>
+        {draft&&<button onClick={()=>{setDraft("");setMudurNotu("");showToast("Not silindi");}} style={{...s.btn("danger"),padding:"8px 12px"}}><Icon name="trash" size={12}/> Sil</button>}
+      </div>
+    </div>
+  );
+}
+
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function App(){
   const [role,setRole]                   = useState(null);
@@ -1926,35 +1960,6 @@ export default function App(){
     );
   };
 
-  // ── MÜDÜR NOT PANELİ (bileşen) ───────────────────────────────────────────────
-  const MudurNotPanel=({mudurNotu,setMudurNotu,showToast})=>{
-    const [draft,setDraft]=useState(mudurNotu);
-    const [saved,setSaved]=useState(false);
-    const save=()=>{setMudurNotu(draft);setSaved(true);showToast("Not ekibe iletildi!");setTimeout(()=>setSaved(false),2500);};
-    return(
-      <div style={{background:"#0E0E1C",border:"1px solid #F4A62333",borderRadius:12,padding:20}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-          <div style={{width:32,height:32,borderRadius:9,background:"#F4A62322",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>📝</div>
-          <div>
-            <div style={{fontSize:14,fontWeight:700,color:"#fff"}}>Ekibe Not</div>
-            <div style={{fontSize:11,color:"#555"}}>Yazdığın not Ekip panelinde görünür</div>
-          </div>
-          {mudurNotu&&<div style={{marginLeft:"auto",fontSize:10,background:"#34C75918",color:"#34C759",border:"1px solid #34C75933",borderRadius:6,padding:"2px 8px",fontWeight:700}}>✅ Aktif not var</div>}
-        </div>
-        <textarea
-          value={draft} onChange={e=>setDraft(e.target.value)}
-          placeholder="Ekibe iletmek istediğin talimat, uyarı veya bilgi..."
-          rows={4}
-          style={{width:"100%",background:"#0A0A14",border:"1px solid #1E1E30",borderRadius:10,padding:"12px 14px",color:"#fff",fontSize:13,fontFamily:"inherit",resize:"vertical",outline:"none",lineHeight:1.6,marginBottom:10}}
-        />
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <button onClick={save} disabled={!draft.trim()} style={{...s.btn("warn"),padding:"8px 16px"}}>{saved?"✅ Gönderildi":"📤 Ekibe Gönder"}</button>
-          {draft&&<button onClick={()=>{setDraft("");setMudurNotu("");showToast("Not silindi");}} style={{...s.btn("danger"),padding:"8px 12px"}}><Icon name="trash" size={12}/> Sil</button>}
-        </div>
-      </div>
-    );
-  };
-
   // ── MÜDÜR PANEL ───────────────────────────────────────────────────────────────
   const MudurPanel=()=>{
     const allSlots2=Object.values(schedule).flat();const total2=allSlots2.length;
@@ -2127,7 +2132,7 @@ export default function App(){
         })()}
 
         {/* Ekibe Not */}
-        <MudurNotPanel mudurNotu={mudurNotu} setMudurNotu={setMudurNotu} showToast={showToast}/>
+        <MudurNotPanel mudurNotu={mudurNotu} setMudurNotu={setMudurNotu} showToast={showToast} s={s}/>
       </div>
     );
   };
