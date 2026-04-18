@@ -809,6 +809,16 @@ export default function App(){
   // roleRef'i role state ile senkronize tut
   useEffect(()=>{ roleRef.current=role; },[role]);
 
+  // Native bildirim gönder — Electron'da main process üzerinden, web'de tarayıcı Notification
+  const sendNotify = useCallback((title, body)=>{
+    if(window.electronAPI?.notify){
+      window.electronAPI.notify(title, body);
+    } else if("Notification" in window && Notification.permission==="granted"){
+      const n=new Notification(title,{body,tag:"ekip-fikir"});
+      n.onclick=()=>window.focus();
+    }
+  },[]);
+
   // Supabase'den veriyi çek ve state'e uygula (polling + visibility refresh için)
   const refreshFromSupa = useCallback(async()=>{
     if(!_supa) return;
@@ -819,12 +829,25 @@ export default function App(){
       if(data?.length){
         const m=Object.fromEntries(data.map(r=>[r.key,_supaUnwrap(r.value)]));
         if(m.venues?.length){ skipWriteRef.current.venues=true; setVenuesRaw(m.venues); }
-        if(m.schedule){ skipWriteRef.current.schedule=true; setScheduleRaw(m.schedule); }
+        if(m.schedule){
+          skipWriteRef.current.schedule=true;
+          setScheduleRaw(m.schedule);
+          // Polling'de de bildirim gönder (Realtime kopuksa yedek)
+          if(roleRef.current==="admin"){
+            const yeni=[];
+            Object.values(m.schedule).forEach(slots=>(slots||[]).forEach(slot=>(slot.ekipFikirleri||[]).forEach(f=>{
+              if(!f.onaylandi&&!notifiedEkipIdsRef.current.has(f.id)){
+                yeni.push(f); notifiedEkipIdsRef.current.add(f.id);
+              }
+            })));
+            if(yeni.length>0) sendNotify("HSI Medya — Yeni Ekip Fikri",`Onay bekliyor: ${yeni.map(f=>f.baslik).join(", ")}`);
+          }
+        }
         if(m.mudur_notu!=null){ skipWriteRef.current.mudur_notu=true; setMudurNotuRaw(m.mudur_notu); }
       }
       setSupaOnline(true);
     }catch{ setSupaOnline(false); }
-  },[]);
+  },[sendNotify]);
 
   // Admin girişinde bildirim izni iste (sadece Electron desktop)
   useEffect(()=>{
@@ -833,18 +856,17 @@ export default function App(){
       if(Notification.permission==="default"){
         Notification.requestPermission().then(perm=>{
           if(perm==="granted"){
-            setTimeout(()=>new Notification("HSI Medya",{body:"Ekip fikirleri için bildirim alacaksınız ✓"}),500);
+            setTimeout(()=>sendNotify("HSI Medya","Ekip fikirleri için bildirim alacaksınız ✓"),500);
           }
         });
       } else if(Notification.permission==="granted"){
-        // Her girişte sessiz test — izin gerçekten çalışıyor mu diye
         if(!window._hsiNotifOK){
           window._hsiNotifOK=true;
-          setTimeout(()=>new Notification("HSI Medya",{body:"Bildirimler aktif ✓",silent:true}),1000);
+          setTimeout(()=>sendNotify("HSI Medya","Bildirimler aktif ✓"),1000);
         }
       }
     }
-  },[role]);
+  },[role,sendNotify]);
 
   // ── OTOMATİK KAYIT (localStorage + Supabase) ─────────────────────────────────
   useEffect(()=>{
@@ -924,9 +946,7 @@ export default function App(){
         if(key==="mudur_notu") setMudurNotuRaw(value);
         if(key==="schedule"){
           setScheduleRaw(value);
-          // Bildirim: sadece Electron desktop + admin rolü
-          const isElectron=window.location.protocol==="file:";
-          if(isElectron&&roleRef.current==="admin"&&"Notification" in window&&Notification.permission==="granted"){
+          if(roleRef.current==="admin"){
             const yeniFikirler=[];
             Object.entries(value).forEach(([,slots])=>{
               (slots||[]).forEach(slot=>{
@@ -939,18 +959,14 @@ export default function App(){
               });
             });
             if(yeniFikirler.length>0){
-              const n=new Notification("HSI Medya — Yeni Ekip Fikri",{
-                body:`Onay bekliyor: ${yeniFikirler.map(f=>f.baslik).join(", ")}`,
-                tag:"ekip-fikir",
-              });
-              n.onclick=()=>window.focus();
+              sendNotify("HSI Medya — Yeni Ekip Fikri",`Onay bekliyor: ${yeniFikirler.map(f=>f.baslik).join(", ")}`);
             }
           }
         }
       })
       .subscribe();
     return ()=>{ _supa.removeChannel(ch); };
-  },[]);
+  },[sendNotify]);
 
   // Polling: Realtime kopsa bile 30s'de bir Supabase'den çek
   useEffect(()=>{

@@ -4,7 +4,7 @@ const path   = require("path");
 const http   = require("http");
 const fs     = require("fs");
 const { spawn } = require("child_process");
-const { app, BrowserWindow, Menu, shell } = require("electron");
+const { app, BrowserWindow, Menu, shell, ipcMain, Notification } = require("electron");
 
 // ── AYARLAR ───────────────────────────────────────────────────────────────────
 const API_PORT  = 8765;
@@ -55,6 +55,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, "preload.js"),
     },
     show: true,
   });
@@ -85,6 +86,16 @@ function retryWait(cb, retries) {
   if (retries <= 0) { console.warn("[Electron] server.py hazır değil, yine de devam ediliyor..."); cb(); return; }
   setTimeout(() => waitForApiServer(cb, retries - 1), 400);
 }
+
+// ── NATIVE BİLDİRİM (renderer'dan IPC ile tetiklenir) ─────────────────────────
+ipcMain.on("hsi-notify", (_event, { title, body }) => {
+  if (!Notification.isSupported()) return;
+  const n = new Notification({ title, body, silent: false });
+  n.on("click", () => {
+    if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+  });
+  n.show();
+});
 
 // ── MAC MENÜ ───────────────────────────────────────────────────────────────────
 function buildMenu() {
