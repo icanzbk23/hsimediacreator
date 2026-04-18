@@ -73,9 +73,11 @@ const _supaUnwrap = (v) => (v && typeof v === "object" && "_d" in v) ? v._d : v;
 
 function getWeekDates() {
   const today = new Date();
-  const day = today.getDay();
+  const day = today.getDay(); // 0=Paz, 1=Pzt, ..., 5=Cum, 6=Cmt
   const diff = today.getDate() - day + (day===0?-6:1);
   const monday = new Date(today); monday.setDate(diff);
+  // Cuma/Cumartesi/Pazar: o hafta bitti, gelecek haftayı göster
+  if(day===5||day===6||day===0) monday.setDate(monday.getDate()+7);
   return DAYS.map((d,i) => {
     const date = new Date(monday); date.setDate(monday.getDate()+i);
     return { day:d, date:date.toLocaleDateString("tr-TR",{day:"2-digit",month:"2-digit"}) };
