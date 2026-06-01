@@ -44,6 +44,9 @@ const INITIAL_VENUES = [
   { id:14, name:"Musta Döner",         concept:"", stock:6,  color:"#4A7C8E", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
   { id:15, name:"Saudade",             concept:"", stock:0,  color:"#8B1A2F", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
   { id:16, name:"Ege Büfe",            concept:"", stock:0,  color:"#00CED1", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
+  { id:17, name:"Bugga",               concept:"", stock:0,  color:"#FF6B35", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
+  { id:18, name:"Helvacı Ali",         concept:"", stock:0,  color:"#A0522D", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
+  { id:19, name:"Kanatçı Resul",      concept:"", stock:0,  color:"#6B8E23", phone:"", instagram:"", introVideos:[], referenceLinks:[], venueAnalysis:"", instagramData:null, ideas:[] },
 ];
 
 // Electron'da file:// protokolüyle yüklendiğinde /api/ URL'leri çalışmaz,
@@ -2597,19 +2600,22 @@ export default function App(){
                   const MEKAN_ESLESTIRME={
                     "MİKADO":               "Mikado Restaurant",
                     "HARVEY BURGER":        "Harvey Burger",
-                    "SULTAN SOFRASI":       "Sultan Sofrası",
-                    "EGE DÖNER":            "Ege Döner",
-                    "EGE BÜFE":             "Ege Büfe",
+                    "SULTAN":       "Sultan Sofrası",
+                    "EGE_DÖNER":            "Ege Döner",
+                    "EGE_BÜFE":             "Ege Büfe",
                     "KUBAN":                "Kuban Kuruyemiş",
                     "MUSTA":                "Musta Döner",
-                    "SÜLEYMAN USTA":        "Süleyman Usta Döner",
+                    "SÜLEYMAN":        "Süleyman Usta Döner",
                     "İSTE ÇİFTLİK":        "İSTE Çiftlik",
                     "SEZAİ USTA":           "Sezai Usta",
-                    "SÜTLÜ KAVURMA":        "Sütlü Kavurma",
-                    "YSANTOCHİA":           "YSANTOCHİA",
-                    "SİNAN ÖZDEMİR":        "Sinan Özdemir",
+                    "SÜTLÜ":        "Sütlü Kavurma",
+                    "YSANTİOCHİA":           "YSANTOCHİA",
+                    "SİNAN":        "Sinan Özdemir",
                     "ŞENÖZ":                "Şenöz",
                     "SAUDADE":              "Saudade",
+                    "BUGGA":                "Bugga",
+                    "HELVACI ALİ":          "Helvacı Ali",
+                    "KANATÇI RESUL":        "Kanatçı Resul",
                   };
                   try{
                     showToast("'s' klasörünü seçin (My Passport diski içindeki s/ klasörü)...");

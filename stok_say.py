@@ -49,7 +49,7 @@ DISK_ADI     = "My Passport"
 KLASOR_ADI   = "s"
 SUPABASE_URL = _ENV.get("VITE_SUPABASE_URL", "")    # app/.env → VITE_SUPABASE_URL
 SUPABASE_KEY = _ENV.get("SUPABASE_SERVICE_KEY", "") or _ENV.get("VITE_SUPABASE_ANON_KEY", "") # app/.env → SUPABASE_SERVICE_KEY
-LOG_DOSYASI  = os.path.expanduser("")
+LOG_DOSYASI  = os.path.expanduser("~/stok_log.txt")
 
 # Diskteki klasör adı → Supabase'deki mekan adı eşleştirmesi
 # Sol taraf: ls komutuyla gördüğün EXACT klasör adı
@@ -58,17 +58,17 @@ _RAW_ESLESTIRME = {
     "MİKADO":                         "Mikado Restaurant",
     "HARVEY BURGER":                   "Harvey Burger",
     "BATURA CAFE":                     None,
-    "SULTAN SOFRASI":                  "Sultan Sofrası",
-    "EGE DÖNER":                       "Ege Döner",
-    "EGE BÜFE":                        "Ege Büfe",
+    "SULTAN":                  "Sultan Sofrası",
+    "EGE_DÖNER":                       "Ege Döner",
+    "EGE_BÜFE":                        "Ege Büfe",
     "KUBAN":                           "Kuban Kuruyemiş",
     "MUSTA":                           "Musta Döner",
-    "SÜLEYMAN USTA":                   "Süleyman Usta Döner",
+    "SÜLEYMAN":                   "Süleyman Usta Döner",
     "İSTE ÇİFTLİK":                    "İSTE Çiftlik",
     "SEZAİ USTA":                      "Sezai Usta",
-    "SÜTLÜ KAVURMA":                   "Sütlü Kavurma",
-    "YSANTOCHİA":                      "YSANTOCHİA",
-    "SİNAN ÖZDEMİR":                   "Sinan Özdemir",
+    "SÜTLÜ":                   "Sütlü Kavurma",
+    "YSANTİOCHİA":                      "YSANTOCHİA",
+    "SİNAN":                   "Sinan Özdemir",
     "HATAY DÖNER":                     None,
     "MERCAN":                          None,
     "CAFE MAKARİNA":                   None,
@@ -82,6 +82,8 @@ _RAW_ESLESTIRME = {
     "ŞENÖZ":                           "Şenöz",
     "SAUDADE":                         "Saudade",
     "KANATÇI RESUL":                   "Kanatçı Resul",
+    "BUGGA":                           "Bugga",
+    "HELVACI ALİ":                     "Helvacı Ali",
 }
 
 def _nfc(s):
