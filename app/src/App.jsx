@@ -64,8 +64,11 @@ const _SESSION_ID = Math.random().toString(36).slice(2, 10);
 
 // Değeri _sid ile sarıp yazarız; okurken _supaUnwrap ile çözeriz
 const _supaSet = async (key, value) => {
-  if (!_supa) return;
-  try { await _supa.from("app_state").upsert({ key, value: { _sid: _SESSION_ID, _d: value }, updated_at: new Date().toISOString() }, { onConflict: "key" }); } catch {}
+  if (!_supa) return false;
+  try {
+    const {error} = await _supa.from("app_state").upsert({ key, value: { _sid: _SESSION_ID, _d: value }, updated_at: new Date().toISOString() }, { onConflict: "key" });
+    return !error;
+  } catch { return false; }
 };
 
 // Eski format (sarılmamış) ile yeni format (_d/_sid) her ikisini de destekler
@@ -771,16 +774,48 @@ function SurveyPage({ venueName }) {
   );
 }
 
+// ── EKİP FİKİR FORMU — App dışında tanımlı: yazarken App re-render'ı focus kaybettirmez ──
+// baslikRef/konseptRef: App seviyesinde useRef — OnayPanel remount'ta değerleri korur
+function EkipFikirForm({baslikRef,konseptRef,onAdd,onCancel,s}){
+  const [baslik,setBaslik]=useState(()=>baslikRef.current||"");
+  const [konsept,setKonsept]=useState(()=>konseptRef.current||"");
+  const handleAdd=()=>{
+    if(!baslik.trim()) return;
+    onAdd(baslik.trim(),konsept.trim());
+    setBaslik(""); setKonsept("");
+    baslikRef.current=""; konseptRef.current="";
+  };
+  const handleCancel=()=>{
+    setBaslik(""); setKonsept("");
+    baslikRef.current=""; konseptRef.current="";
+    onCancel();
+  };
+  return(
+    <div style={{background:"#0A0A14",border:"1px solid #FF950033",borderRadius:8,padding:8,marginBottom:6}}>
+      <input autoFocus value={baslik} onChange={e=>{setBaslik(e.target.value);baslikRef.current=e.target.value;}} placeholder="Fikir başlığı *" style={{...s.input,fontSize:10,padding:"5px 8px",marginBottom:4}}/>
+      <textarea value={konsept} onChange={e=>{setKonsept(e.target.value);konseptRef.current=e.target.value;}} placeholder="Kısa açıklama (opsiyonel)" rows={2} style={{...s.input,fontSize:10,padding:"5px 8px",resize:"none",marginBottom:6,display:"block"}}/>
+      <div style={{display:"flex",gap:4}}>
+        <button onClick={handleAdd} disabled={!baslik.trim()} style={{...s.btn("warn"),padding:"3px 8px",fontSize:10,flex:1,justifyContent:"center"}}><Icon name="check" size={10}/> Ekle</button>
+        <button onClick={handleCancel} style={{...s.btn("ghost"),padding:"3px 8px",fontSize:10}}><Icon name="close" size={10}/></button>
+      </div>
+    </div>
+  );
+}
+
 // ── MÜDÜR NOT PANELİ — App dışında tanımlı, her render'da remount olmaz ─────────
 function MudurNotPanel({mudurNotu,setMudurNotu,showToast,s}){
   const [draft,setDraft]=useState(mudurNotu);
   const [saved,setSaved]=useState(false);
-  // Dış senkron (Supabase) mudurNotu'yu güncellerse draft'ı da güncelle
-  // — sadece admin'in yazmadığı (unsaved) durumda override yap
+  const userEditedRef=useRef(false); // kullanıcı yazmaya başladı mı?
+  // Supabase'den gelen değişikliği sadece kullanıcı henüz yazmaya başlamadıysa uygula
   useEffect(()=>{
-    setDraft(prev=>prev===mudurNotu||prev.trim()===""?mudurNotu:prev);
+    if(!userEditedRef.current) setDraft(mudurNotu);
   },[mudurNotu]);
-  const save=()=>{setMudurNotu(draft);setSaved(true);showToast("Not ekibe iletildi!");setTimeout(()=>setSaved(false),2500);};
+  const save=()=>{
+    setMudurNotu(draft);
+    userEditedRef.current=false; // kayıt sonrası tekrar sync kabul et
+    setSaved(true);showToast("Not ekibe iletildi!");setTimeout(()=>setSaved(false),2500);
+  };
   return(
     <div style={{background:"#0E0E1C",border:"1px solid #F4A62333",borderRadius:12,padding:20}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
@@ -792,14 +827,14 @@ function MudurNotPanel({mudurNotu,setMudurNotu,showToast,s}){
         {mudurNotu&&<div style={{marginLeft:"auto",fontSize:10,background:"#34C75918",color:"#34C759",border:"1px solid #34C75933",borderRadius:6,padding:"2px 8px",fontWeight:700}}>✅ Aktif not var</div>}
       </div>
       <textarea
-        value={draft} onChange={e=>setDraft(e.target.value)}
+        value={draft} onChange={e=>{setDraft(e.target.value);userEditedRef.current=true;}}
         placeholder="Ekibe iletmek istediğin talimat, uyarı veya bilgi..."
         rows={4}
         style={{width:"100%",background:"#0A0A14",border:"1px solid #1E1E30",borderRadius:10,padding:"12px 14px",color:"#fff",fontSize:13,fontFamily:"inherit",resize:"vertical",outline:"none",lineHeight:1.6,marginBottom:10}}
       />
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
         <button onClick={save} disabled={!draft.trim()} style={{...s.btn("warn"),padding:"8px 16px"}}>{saved?"✅ Gönderildi":"📤 Ekibe Gönder"}</button>
-        {draft&&<button onClick={()=>{setDraft("");setMudurNotu("");showToast("Not silindi");}} style={{...s.btn("danger"),padding:"8px 12px"}}><Icon name="trash" size={12}/> Sil</button>}
+        {draft&&<button onClick={()=>{setDraft("");userEditedRef.current=false;setMudurNotu("");showToast("Not silindi");}} style={{...s.btn("danger"),padding:"8px 12px"}}><Icon name="trash" size={12}/> Sil</button>}
       </div>
     </div>
   );
@@ -830,10 +865,37 @@ export default function App(){
   const [mudurNotu,setMudurNotuRaw]      = useState(()=>ls("hsi_mudurNotu",""));
   const [isMobile,setIsMobile]           = useState(()=>window.innerWidth<700);
   const [supaOnline,setSupaOnline]       = useState(!!_supa);
+  // OnayPanel input state'leri — App seviyesinde tutulur, Supabase sync'te remount olsa da sıfırlanmaz
+  const [onayNoteEditing,setOnayNoteEditing]   = useState(null);
+  const [onayNoteVal,setOnayNoteVal]           = useState("");
+  const [onaySelectedIdeas,setOnaySelectedIdeas] = useState({});
+  const [onayEkipFikirForm,setOnayEkipFikirForm] = useState(null);
+  const [onayConfirmSend,setOnayConfirmSend]   = useState(null);
+  const onayEkipBaslikRef  = useRef("");
+  const onayEkipKonseptRef = useRef("");
+  const [onayAddPickerDay,setOnayAddPickerDay] = useState(null);
+  const [onayAddPickerVal,setOnayAddPickerVal] = useState("");
 
   const setVenues    = v=>setVenuesRaw(v);
   const setSchedule  = v=>setScheduleRaw(v);
-  const setMudurNotu = v=>setMudurNotuRaw(v);
+  // setMudurNotu: state + localStorage + Supabase'e direkt yaz, başarısız olursa 2s sonra tekrar dene
+  const setMudurNotu = (v) => {
+    setMudurNotuRaw(v);
+    try{ localStorage.setItem("hsi_mudurNotu", JSON.stringify(v)); }catch{}
+    if(_supa && supaReadyRef.current){
+      supaNotuRef.current=v;
+      lastLocalWriteRef.current=Date.now();
+      (async()=>{
+        const ok = await _supaSet("mudur_notu", v);
+        if(!ok && supaNotuRef.current===v){
+          // İlk yazma başarısız — 2s bekle ve tekrar dene (değer değişmediyse)
+          await new Promise(r=>setTimeout(r,2000));
+          if(supaNotuRef.current===v) await _supaSet("mudur_notu", v);
+        }
+      })();
+    }
+    // supaReady değilse auto-save useEffect, pending mekanizmasıyla halleder
+  };
 
   // Supabase sync kontrol ref'leri
   const supaReadyRef       = useRef(false);   // ilk yükleme bitti mi
@@ -843,6 +905,9 @@ export default function App(){
   const lastLocalWriteRef  = useRef(0);       // son yerel yazma zamanı (ms) — polling race condition'ı önler
   const prevScheduleRef    = useRef(null);    // son bilinen schedule — diff için
   const venuesRef          = useRef([]);      // güncel venues listesi — callback closure'larında isim lookup
+  const pendingSupaWriteRef= useRef({});      // supaReady olmadan yapılan yazılar — ready olunca flush edilir
+  const supaInitFiredRef   = useRef({ venues:false, schedule:false, mudur_notu:false }); // ilk render'ı pending'den koru
+  const supaNotuRef        = useRef(null);    // Supabase'den alınan son mudur_notu — geri yazma döngüsünü önler
 
   // roleRef ve venuesRef'i state ile senkronize tut
   useEffect(()=>{ roleRef.current=role; },[role]);
@@ -898,6 +963,8 @@ export default function App(){
   // Supabase'den veriyi çek ve state'e uygula (polling + visibility refresh için)
   const refreshFromSupa = useCallback(async()=>{
     if(!_supa) return;
+    // İlk yükleme henüz bitmemişse atla — pending yazıları ezmemek için
+    if(!supaReadyRef.current) return;
     // Son yerel yazmadan 10s geçmediyse atla — race condition önlemi
     if(Date.now()-lastLocalWriteRef.current<10000) return;
     try{
@@ -911,7 +978,7 @@ export default function App(){
           prevScheduleRef.current=m.schedule;
           setScheduleRaw(m.schedule);
         }
-        if(m.mudur_notu!=null){ skipWriteRef.current.mudur_notu=true; setMudurNotuRaw(m.mudur_notu); }
+        if(m.mudur_notu!=null){ supaNotuRef.current=m.mudur_notu; setMudurNotuRaw(m.mudur_notu); }
       }
       setSupaOnline(true);
     }catch{ setSupaOnline(false); }
@@ -939,14 +1006,23 @@ export default function App(){
   // ── OTOMATİK KAYIT (localStorage + Supabase) ─────────────────────────────────
   useEffect(()=>{
     try{ localStorage.setItem("hsi_venues", JSON.stringify(venues)); }catch{}
-    if(!supaReadyRef.current) return;
+    if(!supaReadyRef.current){
+      // İlk render'ı atla (initial state); sonraki render = kullanıcı değişikliği → pending'e ekle
+      if(supaInitFiredRef.current.venues) pendingSupaWriteRef.current.venues=venues;
+      supaInitFiredRef.current.venues=true;
+      return;
+    }
     if(skipWriteRef.current.venues){ skipWriteRef.current.venues=false; return; }
     lastLocalWriteRef.current=Date.now();
     _supaSet("venues", venues);
   },[venues]);
   useEffect(()=>{
     try{ localStorage.setItem("hsi_schedule", JSON.stringify(schedule)); }catch{}
-    if(!supaReadyRef.current) return;
+    if(!supaReadyRef.current){
+      if(supaInitFiredRef.current.schedule) pendingSupaWriteRef.current.schedule=schedule;
+      supaInitFiredRef.current.schedule=true;
+      return;
+    }
     if(skipWriteRef.current.schedule){ skipWriteRef.current.schedule=false; return; }
     lastLocalWriteRef.current=Date.now();
     prevScheduleRef.current=schedule; // kendi değişikliğimizi kaydet — diff'te bildirim gönderme
@@ -954,8 +1030,14 @@ export default function App(){
   },[schedule]);
   useEffect(()=>{
     try{ localStorage.setItem("hsi_mudurNotu", JSON.stringify(mudurNotu)); }catch{}
-    if(!supaReadyRef.current) return;
-    if(skipWriteRef.current.mudur_notu){ skipWriteRef.current.mudur_notu=false; return; }
+    if(!supaReadyRef.current){
+      if(supaInitFiredRef.current.mudur_notu) pendingSupaWriteRef.current.mudur_notu=mudurNotu;
+      supaInitFiredRef.current.mudur_notu=true;
+      return;
+    }
+    // Supabase'den gelen değerle aynıysa geri yazma — skipWriteRef yerine ref karşılaştırması
+    // (skipWriteRef: React same-value bail-out'ta consume edilmez → sonraki kullanıcı kaydı yutulur)
+    if(mudurNotu===supaNotuRef.current) return;
     lastLocalWriteRef.current=Date.now();
     _supaSet("mudur_notu", mudurNotu);
   },[mudurNotu]);
@@ -969,31 +1051,46 @@ export default function App(){
         if(data?.length){
           const m=Object.fromEntries(data.map(r=>[r.key, _supaUnwrap(r.value)]));
           if(m.venues?.length){
-            const localDel = new Set(ls("hsi_deleted_ids",[]));
-            const supaDel  = new Set(m.deleted_venue_ids||[]);
-            const allDel   = new Set([...localDel,...supaDel]);
-            const supaIds  = new Set(m.venues.map(v=>v.id));
-            const toAdd    = INITIAL_VENUES.filter(v=>!supaIds.has(v.id)&&!allDel.has(v.id));
-            // skipWriteRef: ilk yükleme Supabase'e geri yazmasın
-            skipWriteRef.current.venues=true;
-            setVenuesRaw(toAdd.length?[...m.venues,...toAdd]:m.venues);
+            if(pendingSupaWriteRef.current.venues!==undefined){
+              // Kullanıcı yükleme sırasında venues değiştirdi — yerel veriyi koru, Supabase'i yazma
+            } else {
+              const localDel = new Set(ls("hsi_deleted_ids",[]));
+              const supaDel  = new Set(m.deleted_venue_ids||[]);
+              const allDel   = new Set([...localDel,...supaDel]);
+              const supaIds  = new Set(m.venues.map(v=>v.id));
+              const toAdd    = INITIAL_VENUES.filter(v=>!supaIds.has(v.id)&&!allDel.has(v.id));
+              skipWriteRef.current.venues=true;
+              setVenuesRaw(toAdd.length?[...m.venues,...toAdd]:m.venues);
+            }
           }
           if(m.schedule){
-            // skipWriteRef: ilk yükleme Supabase'e geri yazmasın
-            skipWriteRef.current.schedule=true;
-            setScheduleRaw(m.schedule);
-            // İlk yüklemede mevcut her şeyi "görüldü" say — açılışta bildirim gitmesin
-            Object.values(m.schedule).forEach(slots=>(slots||[]).forEach(slot=>(slot.ekipFikirleri||[]).forEach(f=>notifiedEkipIdsRef.current.add(f.id))));
-            prevScheduleRef.current=m.schedule;
+            if(pendingSupaWriteRef.current.schedule!==undefined){
+              // Kullanıcı yükleme sırasında schedule değiştirdi — yerel veriyi koru
+            } else {
+              skipWriteRef.current.schedule=true;
+              setScheduleRaw(m.schedule);
+              Object.values(m.schedule).forEach(slots=>(slots||[]).forEach(slot=>(slot.ekipFikirleri||[]).forEach(f=>notifiedEkipIdsRef.current.add(f.id))));
+              prevScheduleRef.current=m.schedule;
+            }
           }
           if(m.mudur_notu!=null){
-            skipWriteRef.current.mudur_notu=true;
-            setMudurNotuRaw(m.mudur_notu);
+            if(pendingSupaWriteRef.current.mudur_notu!==undefined){
+              // Kullanıcı yükleme sırasında not değiştirdi — yerel veriyi koru, supaNotuRef'i güncelleme
+            } else {
+              supaNotuRef.current=m.mudur_notu; // Supabase değerini kaydet — auto-save geri yazmasın
+              setMudurNotuRaw(m.mudur_notu);
+            }
           }
         }
         setSupaOnline(true);
       }catch(e){ console.error("Supabase yüklenemedi:",e); setSupaOnline(false); }
       supaReadyRef.current=true;
+      // Yükleme sırasında bekleyen yazıları Supabase'e gönder (race condition fix)
+      const pend=pendingSupaWriteRef.current;
+      if(pend.venues!==undefined){ lastLocalWriteRef.current=Date.now(); _supaSet("venues",pend.venues); }
+      if(pend.schedule!==undefined){ lastLocalWriteRef.current=Date.now(); prevScheduleRef.current=pend.schedule; _supaSet("schedule",pend.schedule); }
+      if(pend.mudur_notu!==undefined){ lastLocalWriteRef.current=Date.now(); _supaSet("mudur_notu",pend.mudur_notu); }
+      pendingSupaWriteRef.current={};
     })();
   },[]);
 
@@ -1011,10 +1108,10 @@ export default function App(){
         const value = _supaUnwrap(raw.value);
         if(!value) return;
         // Realtime'dan gelen güncellemeyi state'e yaz ama Supabase'e geri yazma
-        skipWriteRef.current[key]=true;
-        if(key==="venues")     setVenuesRaw(value);
-        if(key==="mudur_notu") setMudurNotuRaw(value);
+        if(key==="venues"){ skipWriteRef.current.venues=true; setVenuesRaw(value); }
+        if(key==="mudur_notu"){ supaNotuRef.current=value; setMudurNotuRaw(value); }
         if(key==="schedule"){
+          skipWriteRef.current.schedule=true;
           diffAndNotify(prevScheduleRef.current, value);
           prevScheduleRef.current=value;
           setScheduleRaw(value);
@@ -1120,6 +1217,25 @@ export default function App(){
 
   const buildVenueWAMessage=(venue,day,date)=>
     `Merhaba ${venue.name}! 👋\n\nHSI Medya olarak *${day} ${date}* tarihinde çekim yapmak istiyoruz.\n\nUygun olur mu? 🎬\n\n_HSI Medya Ekibi_`;
+
+  const buildEkipShareMessage=()=>{
+    const lines=["📅 *HAFTALIK ÇEKİM PROGRAMI & FİKİRLER*\n"];
+    weekDates.forEach(({day,date})=>{
+      const slots=(schedule[day]||[]).filter(s=>s.status!=="ertelendi");
+      if(!slots.length) return;
+      lines.push(`*${day} ${date}*`);
+      slots.forEach((sl,i)=>{
+        const v=venues.find(vv=>vv.id===sl.venueId);
+        if(!v) return;
+        lines.push(`  ${i+1}. ${v.name} ${STATUS[sl.status]?.icon||""}`);
+        const fikirler=[...(sl.ekipFikirleri||[]),...(sl.ideas||[])];
+        fikirler.forEach(f=>lines.push(`     💡 ${f.baslik}`));
+      });
+      lines.push("");
+    });
+    lines.push("_hsi medya ekibi_");
+    return lines.join("\n");
+  };
 
   const lowStockVenues=venues.filter(v=>v.stock<=3);
   const scheduleMsg=buildScheduleMessage();
@@ -1502,23 +1618,22 @@ export default function App(){
 
   // ── ONAY PANEL ────────────────────────────────────────────────────────────────
   const OnayPanel=()=>{
-    const [noteEditing,setNoteEditing]=useState(null);
-    const [noteVal,setNoteVal]=useState("");
-    const [selectedIdeas,setSelectedIdeas]=useState({});
-    const [ekipFikirForm,setEkipFikirForm]=useState(null); // key = "day_venueId"
-    const [confirmSend,setConfirmSend]=useState(null); // key = "day_venueId"
-    const [ekipFikirBaslik,setEkipFikirBaslik]=useState("");
-    const [ekipFikirKonsept,setEkipFikirKonsept]=useState("");
-    const [addPickerDay,setAddPickerDay]=useState(null);
-    const [addPickerVal,setAddPickerVal]=useState("");
+    const noteEditing=onayNoteEditing, setNoteEditing=setOnayNoteEditing;
+    const noteVal=onayNoteVal,         setNoteVal=setOnayNoteVal;
+    const selectedIdeas=onaySelectedIdeas, setSelectedIdeas=setOnaySelectedIdeas;
+    const ekipFikirForm=onayEkipFikirForm, setEkipFikirForm=setOnayEkipFikirForm;
+    const confirmSend=onayConfirmSend,     setConfirmSend=setOnayConfirmSend;
 
-    const addEkipFikir=(day,venueId)=>{
-      if(!ekipFikirBaslik.trim()) return;
-      const newFikir={id:Date.now(),baslik:ekipFikirBaslik.trim(),konsept:ekipFikirKonsept.trim()};
+    const addPickerDay=onayAddPickerDay,   setAddPickerDay=setOnayAddPickerDay;
+    const addPickerVal=onayAddPickerVal,   setAddPickerVal=setOnayAddPickerVal;
+
+    const addEkipFikir=(day,venueId,baslik,konsept)=>{
+      if(!baslik.trim()) return;
+      const newFikir={id:Date.now(),baslik:baslik.trim(),konsept:konsept.trim()};
       const mevcut=schedule[day]?.find(s=>s.venueId===venueId)?.ekipFikirleri||[];
       updateSlotField(day,venueId,"ekipFikirleri",[...mevcut,newFikir]);
       updateSlotField(day,venueId,"ekipFikirleriOnaylandi",false);
-      setEkipFikirBaslik("");setEkipFikirKonsept("");setEkipFikirForm(null);
+      setEkipFikirForm(null);
       showToast("Fikir eklendi — admin onayı bekleniyor");
     };
     const removeEkipFikir=(day,venueId,id)=>{
@@ -1530,15 +1645,36 @@ export default function App(){
         <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:8}}>
           <div><div style={{fontSize:isMobile?20:24,fontWeight:800,color:"#fff",marginBottom:4}}>{role==="ekip"?"Onay Paneli":"Program & Onay"}</div><div style={{fontSize:13,color:"#555"}}>{role==="ekip"?"Mekanları ara, durumları güncelle":"Haftalık çekim programı · Onay takibi"}</div></div>
           {role==="admin"&&<button onClick={generateSchedule} style={s.btn("ghost")}><Icon name="sparkle" size={14}/> Yeniden Oluştur</button>}
+          {role==="ekip"&&(()=>{const msg=buildEkipShareMessage();return(
+            <a href={`https://wa.me/?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer"
+              style={{...s.btn("success"),textDecoration:"none",padding:"7px 14px",fontSize:12}}>
+              <Icon name="whatsapp" size={14}/> Programı WP&apos;ta Paylaş
+            </a>
+          );})()}
         </div>
 
-        {/* Müdür Notu — sadece ekip görür */}
+        {/* Müdür Notu — ekip görür */}
         {role==="ekip"&&mudurNotu&&(
           <div style={{background:"#F4A62312",border:"1px solid #F4A62344",borderRadius:12,padding:"14px 18px",marginBottom:20,display:"flex",gap:12,alignItems:"flex-start"}}>
             <div style={{fontSize:20,flexShrink:0}}>📝</div>
             <div>
               <div style={{fontSize:11,fontWeight:700,color:"#F4A623",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:5}}>Yönetici Notu</div>
               <div style={{fontSize:13,color:"#E8E8F0",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{mudurNotu}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Müdür Notu — admin görür + WP gönder */}
+        {role==="admin"&&mudurNotu&&(
+          <div style={{background:"#F4A62312",border:"1px solid #F4A62344",borderRadius:12,padding:"14px 18px",marginBottom:20,display:"flex",gap:12,alignItems:"flex-start"}}>
+            <div style={{fontSize:20,flexShrink:0}}>📝</div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#F4A623",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:5}}>Yönetici Notu (Ekibe Gönderildi)</div>
+              <div style={{fontSize:13,color:"#E8E8F0",lineHeight:1.7,whiteSpace:"pre-wrap",marginBottom:10}}>{mudurNotu}</div>
+              <a href={`https://wa.me/?text=${encodeURIComponent(mudurNotu)}`} target="_blank" rel="noreferrer"
+                style={{...s.btn("warn"),padding:"6px 14px",fontSize:11,textDecoration:"none",display:"inline-flex"}}>
+                <Icon name="whatsapp" size={12}/> WhatsApp ile Gönder
+              </a>
             </div>
           </div>
         )}
@@ -1807,16 +1943,9 @@ export default function App(){
                               )}
                               {/* Fikir ekleme formu */}
                               {ekipFikirForm===slotKey?(
-                                <div style={{background:"#0A0A14",border:"1px solid #FF950033",borderRadius:8,padding:8,marginBottom:6}}>
-                                  <input value={ekipFikirBaslik} onChange={e=>setEkipFikirBaslik(e.target.value)} placeholder="Fikir başlığı *" style={{...s.input,fontSize:10,padding:"5px 8px",marginBottom:4}}/>
-                                  <textarea value={ekipFikirKonsept} onChange={e=>setEkipFikirKonsept(e.target.value)} placeholder="Kısa açıklama (opsiyonel)" rows={2} style={{...s.input,fontSize:10,padding:"5px 8px",resize:"none",marginBottom:6,display:"block"}}/>
-                                  <div style={{display:"flex",gap:4}}>
-                                    <button onClick={()=>addEkipFikir(day,slot.venueId)} disabled={!ekipFikirBaslik.trim()} style={{...s.btn("warn"),padding:"3px 8px",fontSize:10,flex:1,justifyContent:"center"}}><Icon name="check" size={10}/> Ekle</button>
-                                    <button onClick={()=>{setEkipFikirForm(null);setEkipFikirBaslik("");setEkipFikirKonsept("");}} style={{...s.btn("ghost"),padding:"3px 8px",fontSize:10}}><Icon name="close" size={10}/></button>
-                                  </div>
-                                </div>
+                                <EkipFikirForm baslikRef={onayEkipBaslikRef} konseptRef={onayEkipKonseptRef} onAdd={(b,k)=>addEkipFikir(day,slot.venueId,b,k)} onCancel={()=>setEkipFikirForm(null)} s={s}/>
                               ):(
-                                <button onClick={()=>{setEkipFikirForm(slotKey);setEkipFikirBaslik("");setEkipFikirKonsept("");}} style={{...s.btn("ghost"),padding:"3px 8px",fontSize:10,width:"100%",justifyContent:"center",marginBottom:6}}>✍️ Fikir Yaz</button>
+                                <button onClick={()=>{onayEkipBaslikRef.current="";onayEkipKonseptRef.current="";setEkipFikirForm(slotKey);}} style={{...s.btn("ghost"),padding:"3px 8px",fontSize:10,width:"100%",justifyContent:"center",marginBottom:6}}>✍️ Fikir Yaz</button>
                               )}
                               {/* Gönderilecek içerik seçimi (AI + onaylı ekip fikirleri) */}
                               {gonderilebilir.length>0&&(()=>{
@@ -2298,14 +2427,14 @@ export default function App(){
         {!tarama && !scanning && (
           <div style={{textAlign:"center",padding:"70px 20px"}}>
             <div style={{fontSize:52,marginBottom:16}}>💾</div>
-            <div style={{fontSize:15,fontWeight:600,color:"#555",marginBottom:8}}>Elements diski takılıyken "Harddiski Tara" butonuna bas</div>
+            <div style={{fontSize:15,fontWeight:600,color:"#555",marginBottom:8}}>My Passport diski takılıyken "Harddiski Tara" butonuna bas</div>
             <div style={{fontSize:12,color:"#333"}}>Her mekanın video klasörleri yapım / akım olarak ayrıştırılıp gösterilecek</div>
           </div>
         )}
 
         {tarama && !tarama.disk_var && (
           <div style={{background:"#FF950018",border:"1px solid #FF950033",borderRadius:10,padding:14,fontSize:13,color:"#FF9500"}}>
-            ⚠️ Elements diski bulunamadı — <code>/Volumes/Elements</code> bağlı değil
+            ⚠️ My Passport diski bulunamadı — <code>/Volumes/My Passport</code> bağlı değil
           </div>
         )}
 
@@ -2483,7 +2612,7 @@ export default function App(){
                     "SAUDADE":              "Saudade",
                   };
                   try{
-                    showToast("'s' klasörünü seçin (Elements diski içindeki s/ klasörü)...");
+                    showToast("'s' klasörünü seçin (My Passport diski içindeki s/ klasörü)...");
                     // Kullanıcı doğrudan 's' klasörünü seçer
                     const sKlasoru=await window.showDirectoryPicker({mode:"read"});
                     let guncellenen=0;

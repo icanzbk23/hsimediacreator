@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 HSI Medya — Stok Sayım Scripti
-Disk: Elements / Klasör: s/
+Disk: My Passport / Klasör: s/
 Yapı: s/MEKAN_ADI/icerik_klasoru/ (her içerik = bir alt klasör)
 Renksiz alt klasör = stok, renkli = yapılmış
 """
@@ -19,6 +19,7 @@ from datetime import datetime
 # macOS Python SSL sertifika sorunu için
 ssl_ctx = ssl.create_default_context()
 try:
+    # pyrefly: ignore [missing-import]
     import certifi
     ssl_ctx = ssl.create_default_context(cafile=certifi.where())
 except ImportError:
@@ -44,11 +45,11 @@ def env_oku():
 _ENV = env_oku()
 
 # ── AYARLAR ────────────────────────────────────────────────────────────────────
-DISK_ADI     = "Elements"
+DISK_ADI     = "My Passport"
 KLASOR_ADI   = "s"
 SUPABASE_URL = _ENV.get("VITE_SUPABASE_URL", "")    # app/.env → VITE_SUPABASE_URL
 SUPABASE_KEY = _ENV.get("SUPABASE_SERVICE_KEY", "") or _ENV.get("VITE_SUPABASE_ANON_KEY", "") # app/.env → SUPABASE_SERVICE_KEY
-LOG_DOSYASI  = os.path.expanduser("~/stok_log.txt")
+LOG_DOSYASI  = os.path.expanduser("")
 
 # Diskteki klasör adı → Supabase'deki mekan adı eşleştirmesi
 # Sol taraf: ls komutuyla gördüğün EXACT klasör adı
@@ -80,6 +81,7 @@ _RAW_ESLESTIRME = {
     "PASAPORT DENİZCİLER DRON ÇEKİMİ": None,
     "ŞENÖZ":                           "Şenöz",
     "SAUDADE":                         "Saudade",
+    "KANATÇI RESUL":                   "Kanatçı Resul",
 }
 
 def _nfc(s):
